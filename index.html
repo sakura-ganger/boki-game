@@ -254,6 +254,7 @@
 
     // --- 3. localStorage との進捗マージ (プレビュー環境のサンドボックス制限に完全対応) ---
     const STORAGE_KEY = 'sakura_boki3_progress_v2'; // V2に変更
+    const ROUND_STORAGE_KEY = 'sakura_boki3_rounds_v1';
     
     let isLocalStorageAvailable = true;
     try {
@@ -315,6 +316,33 @@
         };
       });
       setStorageItem(STORAGE_KEY, JSON.stringify(progress));
+    }
+
+    function getRoundMap() {
+      const saved = getStorageItem(ROUND_STORAGE_KEY);
+      if (!saved) return {};
+      try {
+        return JSON.parse(saved) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function getStageRound(stageName) {
+      const rounds = getRoundMap();
+      return Math.max(1, Number(rounds[stageName]) || 1);
+    }
+
+    function setStageRound(stageName, round) {
+      const rounds = getRoundMap();
+      rounds[stageName] = Math.max(1, Number(round) || 1);
+      setStorageItem(ROUND_STORAGE_KEY, JSON.stringify(rounds));
+    }
+
+    function advanceStageRound(stageName) {
+      const nextRound = getStageRound(stageName) + 1;
+      setStageRound(stageName, nextRound);
+      return nextRound;
     }
 
     // --- AIの話し方プリセットプロンプト ---
@@ -669,6 +697,10 @@ ${styleText}
       initAudio();
       sounds.tap();
       setStorageItem(`sakura_boki_ai_style_prompt_${styleKey}`, "");
+      const inputEl = document.getElementById(`ai-style-prompt-${styleKey}`);
+      if (inputEl) {
+        inputEl.value = defaultAIStyles[styleKey] || defaultAIStyles.default;
+      }
       showModal("初期値に戻しました", `${aiStyleLabels[styleKey] || 'AIパートナー'}のプロンプトを初期設定に戻しました。`);
       render();
     }
@@ -702,12 +734,9 @@ ${styleText}
 
     function startSession(stageName, isNextRound = false) {
       initAudio();
-      
-      if (!isNextRound) {
-        state.roundCount = 1;
-      }
-      
+
       state.activeStage = stageName;
+      state.roundCount = getStageRound(stageName);
       let targetQuestions = [];
       
       if (stageName === 'favorite') {
@@ -723,10 +752,10 @@ ${styleText}
       let uncleared = targetQuestions.filter(q => !q.isCleared);
       
       if (uncleared.length === 0) {
+        state.roundCount = advanceStageRound(stageName);
         targetQuestions.forEach(q => q.isCleared = false);
         saveProgress();
         uncleared = [...targetQuestions];
-        state.roundCount = 1;
       }
       
       state.currentSessionQueue = shuffle(uncleared);
@@ -760,6 +789,12 @@ ${styleText}
       sounds.answer();
       state.showAnswer = true;
       render();
+      setTimeout(() => {
+        document.getElementById('answer-action-area')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }, 120);
     }
 
     function pressEasy() {
@@ -806,24 +841,6 @@ ${styleText}
       render();
     }
 
-    function resetStageProgress(stageName) {
-      showModal(
-        "進行度リセット",
-        `「${stageName}」の全クリアデータを初期化し、最初から解き直せるようにしますか？`,
-        true,
-        () => {
-          state.questions.forEach(q => {
-            if (q.stage === stageName) {
-              q.isCleared = false;
-              q.wrongCount = 0;
-            }
-          });
-          saveProgress();
-          render();
-        }
-      );
-    }
-
     function toggleFavorite(id, e) {
       if (e) e.stopPropagation(); 
       initAudio();
@@ -865,6 +882,7 @@ ${styleText}
         () => {
           if (isLocalStorageAvailable) {
             localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(ROUND_STORAGE_KEY);
           }
           memoryStorage = {};
           loadProgress();
@@ -935,12 +953,13 @@ ${styleText}
         stageNames.forEach(stage => {
           const stats = getStageStats(stage);
           const percent = Math.round((stats.cleared / stats.total) * 100);
+          const stageRound = getStageRound(stage);
           stageButtonsGridHtml += `
             <div class="bg-white rounded-2xl p-3 border border-sky-100 shadow-sm flex flex-col justify-between">
               <div>
                 <div class="flex justify-between items-start">
                   <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 tracking-wider">STAGE</span>
-                  <span class="text-[10px] font-bold text-sky-400 font-mono">${stats.cleared}/${stats.total}問</span>
+                  <span class="text-[10px] font-bold text-sky-400 font-mono">${stageRound}周目 ${stats.cleared}/${stats.total}問</span>
                 </div>
                 <h4 class="text-xs font-black text-slate-800 mt-1 mb-2 leading-tight">${stage}</h4>
               </div>
@@ -1453,18 +1472,18 @@ ${styleText}
                   <strong class="text-xl font-black text-slate-800 font-mono bg-sky-50 px-3 py-1 rounded-xl border border-sky-200">${stats.remaining}問</strong>
                 </span>
                 <p class="text-xs font-bold text-sky-400 mt-2 leading-relaxed">
-                  ※クリアされなかった「ムズすぎ」問題だけが次回の周回に引き継がれます。
+                  ※クリアされなかった「ムズすぎ」問題だけが、同じ周目の残り問題として引き継がれます。
                 </p>
               </div>
             `}
           </div>
         </div>
 
-        <div class="flex flex-col gap-3">
+        <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-6">
           ${!isPerfect ? `
-            <button onclick="state.roundCount++; startSession('${state.activeStage}', true);" 
+            <button onclick="startSession('${state.activeStage}', true);" 
               class="btn-bubbly w-full bg-[#5EF2D3] text-emerald-950 font-black text-lg py-4.5 rounded-3xl border-b-6 border-emerald-400 shadow-md tracking-wider">
-              次の周回 (残り ${stats.remaining}問) を開始する 🚀
+              残り ${stats.remaining}問を続ける 🚀
             </button>
             
             <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-slate-50 hover:bg-slate-100 text-slate-600 font-black py-4.5 rounded-3xl border border-slate-300 shadow-sm text-center">
