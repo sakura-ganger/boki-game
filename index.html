@@ -785,18 +785,45 @@ ${styleText}
       return arr;
     }
 
-    function toggleAnswer() {
-      sounds.answer();
-      state.showAnswer = true;
-      render();
-      setTimeout(() => {
-        document.getElementById('answer-action-area')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }, 120);
-    }
+function scrollToAnswerActions() {
+  const actionArea = document.getElementById('answer-action-area');
+  if (!actionArea) return;
 
+  const viewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight;
+  const pageTop = window.scrollY || document.documentElement.scrollTop || 0;
+  const rect = actionArea.getBoundingClientRect();
+
+  const targetY = pageTop + rect.top - Math.max(16, (viewportHeight - rect.height) / 2);
+
+  window.scrollTo({
+    top: Math.max(0, targetY),
+    behavior: 'smooth'
+  });
+
+  setTimeout(() => {
+    const latestViewportHeight = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight;
+    const latestRect = actionArea.getBoundingClientRect();
+    const latestPageTop = window.scrollY || document.documentElement.scrollTop || 0;
+    const latestTargetY = latestPageTop + latestRect.top - Math.max(16, (latestViewportHeight - latestRect.height) / 2);
+
+    window.scrollTo({
+      top: Math.max(0, latestTargetY),
+      behavior: 'smooth'
+    });
+  }, 350);
+}
+
+function toggleAnswer() {
+  sounds.answer();
+  state.showAnswer = true;
+  render();
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setTimeout(scrollToAnswerActions, 250);
+    });
+  });
+}
     function pressEasy() {
       sounds.easy();
       const currentQ = state.currentSessionQueue[state.currentIndexInSession];
@@ -1479,7 +1506,7 @@ ${styleText}
           </div>
         </div>
 
-        <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-6">
+        <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-6 mb-28">
           ${!isPerfect ? `
             <button onclick="startSession('${state.activeStage}', true);" 
               class="btn-bubbly w-full bg-[#5EF2D3] text-emerald-950 font-black text-lg py-4.5 rounded-3xl border-b-6 border-emerald-400 shadow-md tracking-wider">
