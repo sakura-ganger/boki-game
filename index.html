@@ -33,9 +33,16 @@
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
+    /* 入力欄・編集欄は文字選択できるようにする */
+    input,
+    textarea {
+      user-select: text;
+      -webkit-user-select: text;
+    }
   </style>
 </head>
-<body class="min-height-screen text-slate-800 pb-12">
+<body class="min-h-screen text-slate-800 pb-12">
 
   <!-- メインコンテナ (max-w-[400px]にきゅっと引き締め) -->
   <div class="max-w-[400px] mx-auto px-4 pt-5">
@@ -289,7 +296,15 @@
 
     function loadProgress() {
       const saved = getStorageItem(STORAGE_KEY);
-      const progress = saved ? JSON.parse(saved) : {};
+      let progress = {};
+
+      try {
+        progress = saved ? JSON.parse(saved) : {};
+      } catch (e) {
+        console.warn("保存データが壊れていたため、学習進捗を初期化しました。", e);
+        progress = {};
+        setStorageItem(STORAGE_KEY, JSON.stringify({}));
+      }
       
       state.questions = rawQuestions.map(q => {
         const savedState = progress[q.id] || {};
@@ -640,7 +655,7 @@ ${styleText}
       if (q) {
         q.question = newText;
         saveProgress();
-        showModal("変更完了", `Q${qId % 100} の問題文を更新しました。プレイ画面や一覧画面に即座に反映されます。🌸`);
+        showModal("変更完了", `Q${qId} の問題文を更新しました。プレイ画面や一覧画面に即座に反映されます。🌸`);
         render();
       }
     }
@@ -659,7 +674,7 @@ ${styleText}
           inputEl.value = q.originalQuestion;
         }
         
-        showModal("復元完了", `Q${qId % 100} の問題文をデフォルトに戻しました。`);
+        showModal("復元完了", `Q${qId} の問題文をデフォルトに戻しました。`);
         render();
       }
     }
@@ -711,7 +726,7 @@ ${styleText}
       const inputEl = document.getElementById(inputId);
       if (inputEl) {
         setStorageItem('sakura_boki_api_key', inputEl.value.trim());
-        showModal("APIキー設定", "Gemini APIキーを安全に保存しました！本物のAI解説とチャットが使用可能になりました🌸");
+        showModal("APIキー設定", "Gemini APIキーをこのブラウザに保存しました。本物のAI解説とチャットが使用可能になりました🌸");
         render();
       }
     }
@@ -785,16 +800,30 @@ ${styleText}
       return arr;
     }
 
+    const ANSWER_SCROLL_DELAY_MS = 650;
+
+    function scrollToAnswerActionArea() {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const target = document.getElementById('answer-action-area');
+          if (!target) return;
+
+          const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          target.scrollIntoView({
+            behavior: prefersReducedMotion ? 'auto' : 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+        }, ANSWER_SCROLL_DELAY_MS);
+      });
+    }
+
     function toggleAnswer() {
+      if (state.showAnswer) return;
       sounds.answer();
       state.showAnswer = true;
       render();
-      setTimeout(() => {
-        document.getElementById('answer-action-area')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center'
-        });
-      }, 120);
+      scrollToAnswerActionArea();
     }
 
     function pressEasy() {
@@ -883,8 +912,10 @@ ${styleText}
           if (isLocalStorageAvailable) {
             localStorage.removeItem(STORAGE_KEY);
             localStorage.removeItem(ROUND_STORAGE_KEY);
+          } else {
+            delete memoryStorage[STORAGE_KEY];
+            delete memoryStorage[ROUND_STORAGE_KEY];
           }
-          memoryStorage = {};
           loadProgress();
           showModal("リセット完了", "すべてのデータを初期化しました。新たな気持ちで頑張りましょう！");
           render();
@@ -1029,7 +1060,7 @@ ${styleText}
               analysisListHtml += `
                 <div class="text-xs pb-1.5 border-b border-sky-100 last:border-0 last:pb-0">
                   <div class="flex items-start justify-between cursor-pointer" onclick="toggleListDetail(${q.id})">
-                    <span class="flex-1 pr-1 font-bold text-slate-600 text-left"><span class="font-mono text-sky-400 mr-1">Q${q.id % 100}</span> ${clearedLabel} ${escapeHtml(q.question)}</span>
+                    <span class="flex-1 pr-1 font-bold text-slate-600 text-left"><span class="font-mono text-sky-400 mr-1">Q${q.id}</span> ${clearedLabel} ${escapeHtml(q.question)}</span>
                     <span class="flex items-center gap-1">${wrongBadge} <button onclick="toggleFavorite(${q.id}, event)" class="text-sm">${q.isFavorite ? '⭐' : '☆'}</button></span>
                   </div>
                   <div class="transition-all duration-200 overflow-hidden ${isDetailOpen ? 'max-h-48 mt-1' : 'max-h-0'}">
@@ -1125,7 +1156,7 @@ ${styleText}
               <input id="user-gemini-key-input" type="password" placeholder="AIキーをペースト..." value="${escapeHtml(userApiKey)}"
                 class="w-full bg-white border border-slate-200 rounded-xl p-2 font-bold focus:border-sky-400 outline-none leading-relaxed text-[10px]">
               <button onclick="saveUserApiKey('user-gemini-key-input')" class="btn-bubbly w-full py-2 bg-[#2ECC71] text-white font-black rounded-xl text-center shadow-sm">
-                APIキーを安全に保存する 💾
+                APIキーをこのブラウザに保存する 💾
               </button>
             </div>
           </div>
@@ -1171,7 +1202,7 @@ ${styleText}
               ${filteredEditorQuestions.map(q => `
                 <div class="bg-white p-3 rounded-2xl border border-sky-100 space-y-2 shadow-sm animate-fade-in">
                   <div class="flex justify-between items-center border-b border-slate-100 pb-1">
-                    <span class="font-black text-sky-600 font-mono">Q${q.id % 100} (${q.stage})</span>
+                    <span class="font-black text-sky-600 font-mono">Q${q.id} (${q.stage})</span>
                     <button onclick="restoreQuestionDefault(${q.id})" class="text-[9px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 py-0.5 px-2 rounded-full border border-rose-100">デフォルトに戻す</button>
                   </div>
                   
@@ -1237,7 +1268,7 @@ ${styleText}
         if (parentQ) {
           parentHtml = `
             <div class="bg-indigo-50 border border-indigo-100 text-indigo-950 rounded-2xl p-3 text-xs text-left mb-4 shadow-inner animate-fade-in">
-              <span class="bg-indigo-100 text-indigo-800 text-[9px] font-black px-1.5 py-0.5 rounded">前提問題 Q${parentQ.id % 100}</span>
+              <span class="bg-indigo-100 text-indigo-800 text-[9px] font-black px-1.5 py-0.5 rounded">前提問題 Q${parentQ.id}</span>
               <p class="mt-1 font-bold leading-relaxed whitespace-pre-wrap">${escapeHtml(parentQ.question)}</p>
             </div>
           `;
@@ -1354,7 +1385,7 @@ ${styleText}
         <div class="bg-white rounded-3xl p-5 border-2 border-sky-100 shadow-[0_6px_0_#9DC6E4] mb-4 relative">
           <div class="flex justify-between items-center mb-4">
             ${modeBadge}
-            <button onclick="toggleFavorite(${q.id})" class="text-2xl focus:outline-none transition-transform active:scale-135 py-0.5 px-2">
+            <button onclick="toggleFavorite(${q.id})" class="text-2xl focus:outline-none transition-transform active:scale-[1.35] py-0.5 px-2">
               ${isFav ? '⭐' : '☆'}
             </button>
           </div>
@@ -1398,21 +1429,21 @@ ${styleText}
         </div>
 
         <!-- アクションボタンエリア -->
-        <div class="flex flex-col gap-3">
+        <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-8">
           ${!state.showAnswer ? `
             <!-- 答えを見るボタン (記憶定着コバルトブルー) -->
-            <button onclick="toggleAnswer()" class="btn-bubbly w-full bg-[#3498DB] hover:bg-[#2980B9] text-white font-black text-base py-3.5 rounded-3xl border-b-6 border-[#2471A3] shadow-md tracking-wider">
+            <button onclick="toggleAnswer()" class="btn-bubbly w-full bg-[#3498DB] hover:bg-[#2980B9] text-white font-black text-base py-3.5 rounded-3xl border-b-[6px] border-[#2471A3] shadow-md tracking-wider">
               答えを見る 👀
             </button>
           ` : `
             <!-- 2. 答え確認後の二択ボタン -->
             <div class="grid grid-cols-2 gap-3">
-              <button onclick="pressHard()" class="btn-bubbly bg-[#FFD1A9] text-amber-950 font-black text-xs py-3 rounded-3xl border-b-6 border-amber-400 shadow-md flex flex-col items-center justify-center gap-1">
+              <button onclick="pressHard()" class="btn-bubbly bg-[#FFD1A9] text-amber-950 font-black text-xs py-3 rounded-3xl border-b-[6px] border-amber-400 shadow-md flex flex-col items-center justify-center gap-1">
                 <span class="text-lg">😵‍💫</span>
                 <span>ムズすぎワロタ</span>
               </button>
               
-              <button onclick="pressEasy()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-xs py-3 rounded-3xl border-b-6 border-emerald-400 shadow-md flex flex-col items-center justify-center gap-1">
+              <button onclick="pressEasy()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-xs py-3 rounded-3xl border-b-[6px] border-emerald-400 shadow-md flex flex-col items-center justify-center gap-1">
                 <span class="text-lg">😎</span>
                 <span>楽勝！</span>
               </button>
@@ -1482,15 +1513,15 @@ ${styleText}
         <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-6">
           ${!isPerfect ? `
             <button onclick="startSession('${state.activeStage}', true);" 
-              class="btn-bubbly w-full bg-[#5EF2D3] text-emerald-950 font-black text-lg py-4.5 rounded-3xl border-b-6 border-emerald-400 shadow-md tracking-wider">
+              class="btn-bubbly w-full bg-[#5EF2D3] text-emerald-950 font-black text-lg py-[1.125rem] rounded-3xl border-b-[6px] border-emerald-400 shadow-md tracking-wider">
               残り ${stats.remaining}問を続ける 🚀
             </button>
             
-            <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-slate-50 hover:bg-slate-100 text-slate-600 font-black py-4.5 rounded-3xl border border-slate-300 shadow-sm text-center">
+            <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-slate-50 hover:bg-slate-100 text-slate-600 font-black py-[1.125rem] rounded-3xl border border-slate-300 shadow-sm text-center">
               ステージ選択へ戻る 🏠
             </button>
           ` : `
-            <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-[#FFF176] text-amber-950 font-black text-lg py-4.5 rounded-3xl border-b-6 border-amber-400 shadow-md tracking-wider text-center">
+            <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-[#FFF176] text-amber-950 font-black text-lg py-[1.125rem] rounded-3xl border-b-[6px] border-amber-400 shadow-md tracking-wider text-center">
               ステージ選択へ戻る 🏠
             </button>
           `}
@@ -1499,6 +1530,48 @@ ${styleText}
     }
 
     // --- 8. ユーティリティ & XSS 対策 ---
+    function showModal(title, body, showOk = false, onOk = null) {
+      const modal = document.getElementById('custom-modal');
+      const iconEl = document.getElementById('modal-icon');
+      const titleEl = document.getElementById('modal-title');
+      const bodyEl = document.getElementById('modal-body');
+      const cancelBtn = document.getElementById('modal-btn-cancel');
+      const okBtn = document.getElementById('modal-btn-ok');
+
+      // モーダル部品が見つからない環境でもアプリ全体を止めないための保険
+      if (!modal || !titleEl || !bodyEl || !cancelBtn || !okBtn) {
+        alert(`${title}
+
+${body}`);
+        if (showOk && typeof onOk === 'function') onOk();
+        return;
+      }
+
+      titleEl.textContent = title;
+      bodyEl.textContent = body;
+      if (iconEl) iconEl.textContent = showOk ? '⚠️' : '🌸';
+
+      okBtn.classList.toggle('hidden', !showOk);
+      cancelBtn.textContent = showOk ? 'キャンセル' : '閉じる';
+
+      cancelBtn.onclick = () => {
+        modal.classList.add('hidden');
+      };
+
+      okBtn.onclick = () => {
+        modal.classList.add('hidden');
+        if (typeof onOk === 'function') onOk();
+      };
+
+      modal.onclick = (event) => {
+        if (event.target === modal) {
+          modal.classList.add('hidden');
+        }
+      };
+
+      modal.classList.remove('hidden');
+    }
+
     function escapeHtml(str) {
       if (typeof str !== 'string') return '';
       return str
@@ -1510,10 +1583,44 @@ ${styleText}
     }
 
     // --- 9. 初期起動処理 ---
-    window.onload = function() {
-      loadProgress();
-      render();
-    };
+    // window.onload だけに頼ると、プレビュー環境で外部フォント/CDNの読み込み待ちになり、
+    // app-root が空のままになることがあります。
+    // そのため DOM の準備ができた時点で即起動し、load イベントと setTimeout でも保険をかけます。
+    let __sakuraBokiAppStarted = false;
+
+    function bootApp() {
+      if (__sakuraBokiAppStarted) return;
+      __sakuraBokiAppStarted = true;
+
+      try {
+        loadProgress();
+        render();
+      } catch (e) {
+        console.error('アプリ起動時エラー:', e);
+        const root = document.getElementById('app-root');
+        if (root) {
+          root.innerHTML = `
+            <div class="bg-white border-2 border-rose-200 rounded-3xl p-5 shadow-md text-center">
+              <div class="text-3xl mb-2">⚠️</div>
+              <h2 class="font-black text-rose-600 text-lg mb-2">アプリの起動に失敗しました</h2>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                保存データまたは実行環境の影響で初期表示に失敗しています。<br>
+                ブラウザの再読み込み、または保存データの削除を試してください。
+              </p>
+            </div>
+          `;
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootApp, { once: true });
+    } else {
+      bootApp();
+    }
+
+    window.addEventListener('load', bootApp, { once: true });
+    setTimeout(bootApp, 0);
 
   </script>
 </body>
