@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>簿記3級 一問一答アプリ</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: かわいい日本語丸ゴシック & 英語丸文字 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;900&family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'M PLUS Rounded 1c', 'Fredoka', sans-serif;
+      /* 記憶の定着率を最大化する集中ブルーグラデーション */
+      background: linear-gradient(135deg, #EBF5FB 0%, #E8F8F5 100%);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    /* プニプニ立体ボタンの共通スタイル */
+    .btn-bubbly {
+      transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .btn-bubbly:active {
+      transform: translateY(4px);
+    }
+    /* ふわっとフェードイン */
+    .animate-fade-in {
+      animation: fadeIn 0.3s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 入力欄・編集欄は文字選択できるようにする */
+    input,
+    textarea {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800 pb-12">
+
+  <!-- メインコンテナ (max-w-[400px]にきゅっと引き締め) -->
+  <div class="max-w-[400px] mx-auto px-4 pt-5">
+
+    <!-- ヘッダーエリア (煽りメッセージ + パステルブルーヘッダー) -->
+    <header class="text-center mb-4">
+      <h1 class="text-2xl font-black text-sky-600 tracking-tight flex items-center justify-center gap-2">
+        <span>🌸</span> 簿記3級 一問一答
+      </h1>
+      <p class="text-xs font-black text-rose-500 tracking-widest mt-1 bg-rose-50 border border-rose-100 py-1 rounded-full inline-block px-4 shadow-sm animate-pulse">やれよ。おい。今すぐやれ。</p>
+    </header>
+
+    <!-- アプリ本体コンポーネントの描画マウント先 -->
+    <main id="app-root"></main>
+
+    <!-- カスタムモーダル (警告やリセット用) -->
+    <div id="custom-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+      <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-[0_12px_24px_rgba(0,0,0,0.15)] border-4 border-sky-300 text-center transform scale-95 transition-transform duration-200">
+        <div id="modal-icon" class="text-4xl mb-3">⚠️</div>
+        <h3 id="modal-title" class="text-lg font-bold text-slate-800 mb-2">タイトル</h3>
+        <p id="modal-body" class="text-sm text-slate-600 mb-6 leading-relaxed">メッセージ内容</p>
+        <div class="flex gap-3 justify-center">
+          <button id="modal-btn-cancel" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-sm transition-colors">閉じる</button>
+          <button id="modal-btn-ok" class="bg-rose-400 hover:bg-rose-500 text-white font-bold px-4 py-2 rounded-xl text-sm transition-colors hidden">確定する</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // --- 1. 問題生データの完全パース＆格納（引き継ぎ問題用のparentIdを定義） ---
+    const rawQuestions = [
+      // 簿記3級①入門
+      { id: 1, stage: "①入門", question: "1個100円の商品を掛けで100個買った（三分法）", answer: "仕入 10,000 ／ 買掛金 10,000" },
+      { id: 2, stage: "①入門", parentId: 1, question: "上記商品のうち10個を1個200円で掛け販売した（三分法）", answer: "売掛金 2,000 ／ 売上 2,000" },
+      { id: 3, stage: "①入門", question: "事務所用パソコン30万円を掛けで購入した", answer: "備品 300,000 ／ 未払金 300,000" },
+      { id: 4, stage: "①入門", question: "建物500万円・土地300万円を普通預金から振込", answer: "建物 5,000,000・土地 3,000,000 ／ 普通預金 8,000,000" },
+      { id: 5, stage: "①入門", question: "代表的な財務諸表2つを答えよ", answer: "貸借対照表（B/S）、損益計算書（P/L）" },
+      { id: 6, stage: "①入門", question: "B/Sは（１）を表し、P/Lは（２）を表す", answer: "（１）財政状態　（２）経営成績" },
+      { id: 7, stage: "①入門", question: "正しい語句の組み合わせを選べ\nア: (B/S＝経営成績, P/L＝財政状態)\nエ: (B/S＝財政状態, P/L＝経営成績)", answer: "エ（貸借対照表、損益計算書）" },
+      { id: 8, stage: "①入門", question: "500円の商品を掛けで仕入れた", answer: "仕入 500 ／ 買掛金 500" },
+      { id: 9, stage: "①入門", question: "Q8の商品を700円で掛け販売した", answer: "売掛金 700 ／ 売上 700" },
+      { id: 10, stage: "①入門", parentId: 8, question: "Q8の買掛金500円を現金で支払った", answer: "買掛金 500 ／ 現金 500" },
+      { id: 11, stage: "①入門", parentId: 9, question: "Q9の売掛金700円が普通預金に振り込まれた", answer: "普通預金 700 ／ 売掛金 700" },
+      { id: 12, stage: "①入門", question: "給料30万円を普通預金から支払った", answer: "給料 300,000 ／ 普通預金 300,000" },
+      { id: 13, stage: "①入門", question: "経理部用パソコン20万円を掛けで購入した", answer: "備品 200,000 ／ 未払金 200,000" },
+      { id: 14, stage: "①入門", question: "販売用パソコン20万円×10台を掛けで購入した", answer: "仕入 2,000,000 ／ 買掛金 2,000,000" },
+      { id: 15, stage: "①入門", question: "現金5,000円を普通預金に預け入れた", answer: "普通預金 5,000 ／ 現金 5,000" },
+      { id: 16, stage: "①入門", question: "銀行から20万円を借入, 普通預金に入金された", answer: "普通預金 200,000 ／ 借入金 200,000" },
+      { id: 17, stage: "①入門", question: "売掛金3万円のうち2万円を現金、1万円を普通預金で受け取った", answer: "現金 20,000・普通預金 10,000 ／ 売掛金 30,000" },
+      { id: 18, stage: "①入門", question: "Aさんへの未払金1,000円を現金で振り込んだ", answer: "未払金 1,000 ／ 現金 1,000" },
+
+      // 簿記3級③預金
+      { id: 19, stage: "③預金", question: "普通預金10,000円を定期預金に振り替え、手数料300円が普通預金から差し引かれた", answer: "(借) 定期預金 10,000・支払手数料 300 ／ (貸) 普通預金 10,300" },
+      { id: 20, stage: "③預金", question: "普通預金に利息2,000円がついた", answer: "(借) 普通預金 2,000 ／ (貸) 受取利息 2,000" },
+      { id: 21, stage: "③預金", question: "手元の郵便為替証書4,000円を普通預金に預け入れた", answer: "(借) 普通預金 4,000 ／ (貸) 現金 4,000" },
+      { id: 22, stage: "③預金", question: "【A社側】パソコン50万円を小切手で購入し、B社に渡した", answer: "① (借) 備品 500,000 ／ (貸) 当座預金 500,000\n② 仕訳なし" },
+      { id: 23, stage: "③預金", question: "【B社側】A社から小切手でパソコン50万円を販売した", answer: "① (借) 現金 500,000 ／ (貸) 売上 500,000\n② 仕訳なし" },
+      { id: 24, stage: "③預金", parentId: 22, question: "【A社側】振り出した小切手がB社→C社→A社へ戻ってきた", answer: "① (借) 備品 500,000 ／ (貸) 当座預金 500,000\n② 仕訳なし\n③ (借) 当座預金 500,000 ／ (貸) 貸付金 500,000" },
+      { id: 25, stage: "③預金", question: "A銀行・B銀行の当座預金に現金500円ずつ預け入れた", answer: "(借) 当座預金A銀行 500・当座預金B銀行 500 ／ (貸) 現金 1,000" },
+      { id: 26, stage: "③預金", question: "B信用金庫の普通預金500円をA銀行の当座預金へ振り替えた", answer: "(借) 当座預金A銀行 500 ／ (貸) 普通預金B信用金庫 500" },
+      { id: 27, stage: "③預金", question: "買掛金800,000円を小切手で支払った（C銀行の当座預金）", answer: "(借) 買掛金 800,000 ／ (貸) 当座預金C銀行 800,000" },
+      { id: 28, stage: "③預金", question: "本社が営業所へ小口現金として小切手20万円を送付した", answer: "(借) 小口現金 200,000 ／ (貸) 当座預金 200,000" },
+      { id: 29, stage: "③預金", question: "①実査で現金2万円、帳簿は3万円であった。差額1万円の処理を行え。\n②原因は「自己振出小切手を現金として処理していた」ことと判明した時の仕訳は？", answer: "① (借) 現金過不足 10,000 ／ (貸) 現金 10,000\n② (借) 当座預金 10,000 ／ (貸) 現金過不足 10,000" },
+
+      // 簿記3級④商品売買
+      { id: 30, stage: "④商品売買", question: "6,000円の商品を購入し、小切手2,000円を振り出し、残額は掛けとした", answer: "仕入 6,000 ／ 当座預金 2,000・買掛金 4,000" },
+      { id: 31, stage: "④商品売買", question: "商品（仕入値5,000円）を8,000円で掛け販売した。\n①分記法　②三分法", answer: "① 売掛金 8,000 ／ 商品 5,000・商品売買益 3,000\n② 売掛金 8,000 ／ 売上 8,000", hint: "分記法を理解すると三分法が深まります！" },
+      { id: 32, stage: "④商品売買", question: "商品300円を掛けで仕入れ、引取手数料10円を現金で支払った", answer: "仕入 310 ／ 買掛金 300・現金 10", hint: "取得原価 ＝ 本体価格 ＋ 付随費用 です！" },
+      { id: 33, stage: "④商品売買", question: "商品300円を掛けで購入。売主負担の引取運賃20円を現金で支払った。\n①立替金を使う場合　②立替金を使わない場合", answer: "① 仕入 300 ／ 買掛金 300　立替金 20 ／ 現金 20\n② 仕入 300 ／ 買掛金 280・現金 20", hint: "相手負担の費用は自分の仕入原価に含めてはいけません。" },
+      { id: 34, stage: "④商品売買", question: "先入先出法において、6月20日に販売した商品の仕入単価（1個あたり）はいくら？", answer: "100円" },
+      { id: 35, stage: "④商品売買", question: "移動平均法において、6月20日に販売した商品の仕入値合計（2個分）はいくら？", answer: "230円", hint: "平均単価 115円 × 2個 ＝ 230円" },
+      { id: 36, stage: "④商品売買", question: "1万円の商品を販売。手付金1,000円は前受金で処理済み、残額は掛けとした", answer: "売掛金 9,000 ／ 売上 10,000・前受金 1,000", hint: "前受金は売上計上時に取り崩して消します。" },
+      { id: 37, stage: "④商品売買", question: "パソコン3台（1台20万円）を販売（掛け）。買主は事務用に使用する。\n①買主（野田商店）の仕訳　②売主（葛飾商店）の仕訳", answer: "① 備品 600,000 ／ 未払金 600,000\n② 売掛金 600,000 ／ 売上 600,000", hint: "買主にとっては「備品」、売主にとっては「商品（売上）」です。" },
+      { id: 38, stage: "④商品売買", question: "昨日掛け販売した商品（300円×10個）のうち2個が返品された", answer: "売上 600 ／ 売掛金 600" },
+      { id: 39, stage: "④商品売買", question: "クレジット販売20,000円（手数料3%）。後日入金があった。\n【2/22 販売時】【2/28 当社口座入金時】【3/20 クレジット会社支払時】それぞれの仕訳は？", answer: "2/22: クレジット売掛金 19,400・支払手数料 600 ／ 売上 20,000\n2/28: 当座預金 19,400 ／ クレジット売掛金 19,400\n3/20: 仕訳なし", hint: "販売したタイミングで手数料を先に計上します。" },
+      { id: 40, stage: "④商品売買", question: "商品10,000円を掛け販売。売主負担の運送費300円を現金で支払った", answer: "売掛金 10,000 ／ 売上 10,000\n発送費 300 ／ 現金 300" },
+      { id: 41, stage: "④商品売買", question: "商品1,000円を掛け販売。買主負担の送料100円を来月末に当社が支払う予定。売掛金に上乗せして処理する", answer: "売掛金 1,100 ／ 売上 1,100\n発送費 100 ／ 未払金 100", hint: "「商品売買取引」と「発送費支払い取引」は別個の取引として処理します。" },
+
+      // 簿記3級⑤手形・電子記録債権
+      { id: 42, stage: "⑤手形・電子記録債権", question: "手形には「受取手形」と「支払手形」の2種類がある。〇か×か？", answer: "×", hint: "手形の種類は「約束手形」「為替手形」です。受取手形・支払手形は『勘定科目』になります。" },
+      { id: 43, stage: "⑤手形・電子記録債権", question: "A社側の仕訳を行え。\n①手形で仕入れ(7,000円)\n②銀行に手形を持参し預入\n③期日に無事決済された", answer: "① 仕入 7,000 ／ 支払手形 7,000\n② 仕訳なし\n③ 支払手形 7,000 ／ 当座預金 7,000" },
+      { id: 44, stage: "⑤手形・電子記録債権", question: "B社側の仕訳を行え。\n①手形を受け取り販売(7,000円)\n②銀行に手形を持参し預入\n③期日に無事決済された", answer: "① 受取手形 7,000 ／ 売上 7,000\n② 仕訳なし\n③ 当座預金 7,000 ／ 受取手形 7,000" },
+      { id: 45, stage: "⑤手形・電子記録債権", question: "商品7,000円を手形で仕入れ、引取運賃300円を現金で支払った（日比谷商店）", answer: "仕入 7,300 ／ 支払手形 7,000・現金 300" },
+      { id: 46, stage: "⑤手形・電子記録債権", question: "諏訪商店が山口商店から現金1万円を借り、代わりに同額 of 約束手形を渡した（諏訪商店側の仕訳）", answer: "現金 10,000 ／ 手形借入金 10,000" },
+      { id: 47, stage: "⑤手形・電子記録債権", question: "諏訪商店に現金1万円を貸し付け、同額の約束手形を受け取った（山口商店側の仕訳）", answer: "手形貸付金 10,000 ／ 現金 10,000" },
+      { id: 48, stage: "⑤手形・電子記録債権", question: "電子記録債権の流れ（A社側の仕訳）\n9/20: 掛け販売(600円)\n10/31: 電子記録債権の発生記録を行う\n2/29: 期日に当座預金に払い込まれた", answer: "9/20:  売掛金 600 ／ 売上 600\n10/31: 電子記録債権 600 ／ 売掛金 600\n2/29:  当座預金 600 ／ 電子記録債権 600" },
+
+      // 簿記3級⑥固定資産・経費等
+      { id: 49, stage: "⑥固定資産・経費等", question: "営業用の自動車として2,000万円のスーパーカーを購入し、小切手で支払った", answer: "(借) 車両運搬具 20,000,000 ／ (貸) 当座預金 20,000,000" },
+      { id: 50, stage: "⑥固定資産・経費等", question: "出張電車代5,000円を従業員の普通預金口座へ、当社の当座預金から振り込んだ", answer: "(借) 旅費交通費 5,000 ／ (貸) 当座預金 5,000" },
+      { id: 51, stage: "⑥固定資産・経費等", question: "事務所の家賃40万円を現金で支払った", answer: "(借) 支払家賃 400,000 ／ (貸) 現金 400,000" },
+      { id: 52, stage: "⑥固定資産・経費等", question: "火災保険料24万円を小切手で支払った", answer: "(借) 支払保険料 240,000 ／ (貸) 当座預金 240,000" },
+      { id: 53, stage: "⑥固定資産・経費等", question: "プリンター用インク5,000円を現金で購入した", answer: "(借) 消耗品費 5,000 ／ (貸) 現金 5,000" },
+      { id: 54, stage: "⑥固定資産・経費等", question: "郵便切手200円×100枚を翌月末払いで購入した", answer: "(借) 通信費 20,000 ／ (貸) 未払金 20,000" },
+      { id: 55, stage: "⑥固定資産・経費等", question: "収入印紙200円×100枚、4,000円×100枚を現金で購入し、即座に貼付した", answer: "(借) 租税公課 420,000 ／ (貸) 現金 420,000" },
+      { id: 56, stage: "⑥固定資産・経費等", question: "商品10,000円を販売し、他社発行の商品券6,000円と現金4,000円を受け取った", answer: "(借) 受取商品券 6,000・現金 4,000 ／ (貸) 売上 10,000" },
+      { id: 57, stage: "⑥固定資産・経費等", question: "上記の商品券を加盟店会で換金し、C銀行の当座預金に入金された", answer: "(借) 当座預金C銀行 6,000 ／ (貸) 受取商品券 6,000" },
+      { id: 58, stage: "⑥固定資産・経費等", question: "従業員へ100万円を期間半年・年利2%で貸し付け、満期を迎え元利合計が当座預金に入金された", answer: "(借) 当座預金 1,010,000 ／ (貸) 従業員貸付金 1,000,000・受取利息 10,000" },
+      { id: 59, stage: "⑥固定資産・経費等", question: "給料8,000,000円を支払うにあたり、従業員負担の所得税600,000円、社会保険料500,000円を控除し残額を当座預金から支払った", answer: "(借) 給料 8,000,000 ／ (貸) 当座預金 6,900,000・所得税預り金 600,000・社会保険料預り金 500,000" },
+      { id: 60, stage: "⑥固定資産・経費等", question: "翌月, 上記の所得税預り金・社会保険料預り金に加えて、会社負担分の社会保険料560,000円を合わせて小切手で納付した", answer: "(借) 所得税預り金 600,000・社会保険料預り金 500,000・法定福利費 560,000 ／ (貸) 当座預金 1,660,000" },
+      { id: 61, stage: "⑥固定資産・経費等", question: "出張で交通系ICカードを使用し電車代5,000円を支払った（なお、ICカードチャージ時に「仮払金」で処理していた）", answer: "(借) 旅費交通費 5,000 ／ (貸) 仮払金 5,000" },
+      { id: 62, stage: "⑥固定資産・経費等", question: "事務所の新規賃貸に伴い、当月分家賃100,000円、不動産会社への仲介手数料200,000円、敷金300,000円を小切手で支払った", answer: "(借) 支払家賃 100,000・支払手数料 200,000・差入保証金 300,000 ／ (貸) 当座預金 600,000" },
+
+      // 簿記3級⑦純資産
+      { id: 63, stage: "⑦純資産", question: "株式会社は『①』を発行する。それを買い取った者は『②』という法的立場を獲得する", answer: "① 株式　② 株主", hint: "なお、実物としての「株券」は現代では原則として発行されません。" },
+      { id: 64, stage: "⑦純資産", question: "会社設立にあたり、株式10,000株を1株1,000円で発行し、全額当座預金口座に払い込まれた", answer: "当座預金 10,000,000 ／ 資本金 10,000,000" },
+      { id: 65, stage: "⑦純資産", question: "設立8年後、事業拡大(増資)のため株式10,000株を1株1,000円で追加発行し、全額当座預金に払い込まれた", answer: "当座預金 10,000,000 ／ 資本金 10,000,000" },
+      { id: 66, stage: "⑦純資産", question: "株主総会の決議に基づき、繰越利益剰余金1,000,000円を利益準備金に積み立てた", answer: "繰越利益剰余金 1,000,000 ／ 利益準備金 1,000,000" },
+      { id: 67, stage: "⑦純資産", question: "決算。収益（売上1,000・受取手数料100）、費用（給料800・支払利息200）を「損益」勘定へ振り替える仕訳をそれぞれ行え", answer: "① 売上 1,000・受取手数料 100 ／ 損益 1,100\n② 損益 1,000 ／ 給料 800・支払利息 200" },
+      { id: 68, stage: "⑦純資産", question: "前問の結果、確定した当期純利益（損益勘定の残高100）を「繰越利益剰余金」へ振り替える仕訳を行え", answer: "損益 100 ／ 繰越利益剰余金 100" },
+      { id: 69, stage: "⑦純資産", question: "横浜商店は個人商店である。この商店に代表取締役社長は存在するか？", answer: "存在しない（個人商店には会社法が適用されないためオーナー・店主のみとなります）" },
+
+      // 簿記3級⑧決算の全体像
+      { id: 70, stage: "⑧決算の全体像", question: "財務諸表の中心となるもので、財政状態を表す『①』と、経営成績を表す『②』は何か？", answer: "① 貸借対照表（Balance sheet = B/S）\n② 損益計算書（Profit and loss statement = P/L）" },
+      { id: 71, stage: "⑧決算の全体像", question: "貸借対照表は一定時点の『①』を表し、損益計算書は一定期間の『②』を表す", answer: "① 財政状態　② 経営成績" },
+      { id: 72, stage: "⑧決算の全体像", question: "決算整理前の残高試算表に, 決算整理仕訳を全て反映させた段階の試算表を何と呼ぶか？", answer: "決算整理後試算表（後T/B）" },
+      { id: 73, stage: "⑧決算の全体像", question: "期末日が3月31日である場合、決算作業は4月1日以降に行うのが通常（3月中には行わない）である。〇か×か？", answer: "〇" },
+
+      // 簿記3級⑨決算整理仕訳1/3
+      { id: 74, stage: "⑨決算整理仕訳1/3", question: "決算。3月31日時点の現金手許有高は30,500円だが、帳簿残高は30,000円であった。本日になっても不一致の原因が判明しないため、適切な決算仕訳を行う", answer: "現金 500 ／ 雑益 500" },
+      { id: 75, stage: "⑨決算整理仕訳1/3", question: "3月29日に電気代1万円を小切手を振り出して支払っていた（仕訳済）。期末に当座預金残高が1,000円（借方）になっているが、当座借越契約が結ばれている。適切な決算整理仕訳は？", answer: "当座預金 9,000 ／ 当座借越 9,000", hint: "もし問題で当座借越勘定が指定されていない場合は「借入金」等を用います。" },
+      { id: 76, stage: "⑨決算整理仕訳1/3", question: "決算において、期末手許に未使用の郵便切手80円×100枚、収入印紙200円×100枚が残っていることが判明した。振替仕訳を行え", answer: "貯蔵品 28,000 ／ 通信費 8,000・租税公課 20,000", hint: "いつ購入したかは関係ありません。残高を決算時に「貯蔵品（資産）」に一時退避させます。" },
+      { id: 77, stage: "⑨決算整理仕訳1/3", question: "2月1日に3ヶ月分(2月〜4月)の家賃（1ヶ月あたり10万円）を当座預金で一括で支払っていた。決算整理仕訳（テナント・店主側）を行え", answer: "前払家賃 100,000 ／ 支払家賃 100,000", hint: "決算日(3/31)時点で、まだ来ていない4月分(1ヶ月分)が「前払い（資産）」になります。" },
+      { id: 78, stage: "⑨決算整理仕訳1/3", question: "2月1日に3ヶ月分(2月〜4月)の家賃（1ヶ月10万円）を当座預金に受け取っていた。決算整理仕訳（大家側）を行え", answer: "受取家賃 100,000 ／ 前受家賃 100,000", hint: "決算日(3/31)時点で、来期の4月分(1ヶ月分)が「前受け（負債）」になります。" },
+      { id: 79, stage: "⑨決算整理仕訳1/3", question: "家賃（月額10万円）は常に翌月払いの契約である。決算整理仕訳（テナント側）を行え", answer: "支払家賃 100,000 ／ 未払家賃 100,000", hint: "3月分は翌月（4月）に払うため、決算日時点では「未払い（負債）」の計上をします。" },
+      { id: 80, stage: "⑨決算整理仕訳1/3", question: "家賃（月額10万円）は常に翌月回収の契約である。決算整理仕訳（大家側）を行え", answer: "未収家賃 100,000 ／ 受取家賃 100,000", hint: "3月分は来月入金となるため、決算日時点では「未収（資産）」を計上します。" },
+      { id: 81, stage: "⑨決算整理仕訳1/3", question: "×1年1月1日、A社がB社に100万円を貸し付けた（年利1.2%、利息は満期一括回収）。当期末は×1年3月31日。決算整理仕訳（A社側）を行え", answer: "未収利息 3,000 ／ 受取利息 3,000", hint: "1年分の利息は 12,000円。当期分に属する3ヶ月分（1月〜3月）の 3,000円を未収処理します。" },
+      { id: 82, stage: "⑨決算整理仕訳1/3", parentId: 81, question: "前問(Q81)の貸付における、借主であるB社側の当期末決算整理仕訳を答えよ", answer: "支払利息 3,000 ／ 未払利息 3,000" },
+      { id: 83, stage: "⑨決算整理仕訳1/3", question: "電気代は常に翌月払いである。1月:3万円、2月:2万円、3月:4万円だった。決算日3/31における決算整理仕訳を行え", answer: "水道光熱費 40,000 ／ 未払費用 40,000" },
+      { id: 84, stage: "⑨決算整理仕訳1/3", question: "×1年1月1日に、3年分の保険料36万円を現金で支払った（支払時に「支払保険料」で処理済）。当期末は×1年3月31日。決算整理仕訳を行え", answer: "前払保険料 330,000 ／ 支払保険料 330,000" },
+
+      // 簿記3級⑩決算整理仕訳2/3
+      { id: 85, stage: "⑩決算整理仕訳2/3", question: "×2年3月31日決算. ×1年4月1日に購入した機械装置（取得価額100万円・耐用年数9年・残存価額10万円）について、定額法・間接法で当期の減価償却を行え", answer: "減価償却費 100,000 ／ 機械装置減価償却累計額 100,000", hint: "(100万円 − 10万円) ÷ 9年 ＝ 100,000円" },
+      { id: 86, stage: "⑩決算整理仕訳2/3", parentId: 85, question: "前問の機械装置について、翌年×3年3月31日の決算日における当期の減価償却仕訳を答えよ", answer: "減価償却費 100,000 ／ 機械装置減価償却累計額 100,000" },
+      { id: 87, stage: "⑩決算整理仕訳2/3", parentId: 85, question: "×3年4月1日（期首）、上記で減価償却を行っていた機械装置（取得価額100万円、累計額20万円）を50万円で売却し、代金は後日回収とした", answer: "機械装置減価償却累計額 200,000・未収入金 500,000・固定資産売却損 300,000 ／ 機械装置 1,000,000", hint: "売却時の機械の価値(帳簿価額)は80万円。それを50万円で売却したため30万円の売却損が出ます。" },
+      { id: 88, stage: "⑩決算整理仕訳2/3", question: "①×2年3月1日にB社へ商品100円を掛け販売した。\n②×2年3月3日にB社が倒産し、売掛金が回収不能となった。それぞれの仕訳は？", answer: "① 売掛金 100 ／ 売上 100\n② 貸倒損失 100 ／ 売掛金 100" },
+      { id: 89, stage: "⑩決算整理仕訳2/3", question: "初めての決算。売掛金と受取手形の合計が100,000円。これに対し2%の貸倒れを見積もる。なお差額補充法による仕訳を行え", answer: "貸倒引当金繰入 2,000 ／ 貸倒引当金 2,000", hint: "初年度（残高0）のため、見積額の全額を繰り入れます。" },
+      { id: 90, stage: "⑩決算整理仕訳2/3", question: "①×2年3月1日に販売し売掛金100円とした。\n②×2年4月3日に得意先が倒産し、回収不能となった. 決算整理は3/31をまたいでおり、引当金残高は1,000円ある。仕訳を行え", answer: "① 売掛金 100 ／ 売上 100\n② 貸倒引当金 100 ／ 売掛金 100", hint: "決算期をまたいだ回収不能（前期以前の売上債権）は「貸倒引当金」を取り崩して充当します。" },
+      { id: 91, stage: "⑩決算整理仕訳2/3", question: "×4年5月1日、C社が倒産。売掛金300円が回収不能となった。このうち100円は前期売上分、200円は当期売上分。貸倒引当金残高は1,000円ある。仕訳を行え", answer: "貸倒引当金 100・貸倒損失 200 ／ 売掛金 300", hint: "前期に発生した債権は「引当金」を充て、当期に発生した債権はそのまま「貸倒損失（費用）」とします。" },
+      { id: 92, stage: "⑩決算整理仕訳2/3", question: "×8年3月31日決算。売掛金と受取手形の期末残高合計は100,000円。2%の貸倒れを見積もる。なお貸倒引当金残高は3,000円ある。適切な整理仕訳（差額補充法）を行え", answer: "貸倒引当金 1,000 ／ 貸倒引当金戻入 1,000", hint: "必要な額は 2,000円ですが現在 3,000円あるため、余った 1,000円を「戻入（収益）」として減らします。" },
+      { id: 93, stage: "⑩決算整理仕訳2/3", question: "①×2年3月20日掛け販売(300円)\n②×2年3月25日倒産し貸倒処理\n③×2年3月30日(期末前)にその一部100円を現金で回収。それぞれの仕訳は？", answer: "① 売掛金 300 ／ 売上 300\n② 貸倒損失 300 ／ 売掛金 300\n③ 現金 100 ／ 貸倒損失 100" },
+      { id: 94, stage: "⑩決算整理仕訳2/3", question: "①×2年3月20日掛け販売(300円)\n②×2年3月25日倒産し貸倒処理（決算日は3/31、引当金500円あり）\n③翌期×2年4月1日にその一部100円を現金で回収（引当金残高500）。それぞれの仕訳は？", answer: "① 売掛金 300 ／ 売上 300\n② 貸倒損失 300 ／ 売掛金 300\n③ 現金 100 ／ 償却債権取立益 100", hint: "前期に一度貸倒れとして確定した取引の逆仕訳はできないため、翌期以降の回収は「償却債権取立益（収益）」で処理します。" },
+      { id: 95, stage: "⑩決算整理仕訳2/3", question: "×2年3月1日に120万円の事務用パソコンを購入した。×2年3月31日, 定額法（耐用年数10年、残存価額0円、間接法）で1ヶ月分の減価償却を行え", answer: "減価償却費 10,000 ／ 備品減価償却累計額 10,000", hint: "年額 12万円ですが、使用期間が1ヶ月のため、月割計算して 1万円を償却します。" },
+      { id: 96, stage: "⑩決算整理仕訳2/3", parentId: 95, question: "前問の続き。×2年5月31日に当該パソコンを100万円で売却し、代金は後日回収とした。当期首は4月1日。期中売却の仕訳を行え", answer: "備品減価償却累計額 10,000・減価償却費 20,000・未収入金 1,000,000・固定資産売却損 170,000 ／ 備品 1,200,000", hint: "売却日までに当期使用した2ヶ月分（4月、5月分）の追加の減価償却（2万円）を同時に計上します。" },
+
+      // 簿記3級⑪決算整理仕訳3/3
+      { id: 97, stage: "⑪決算整理仕訳3/3", question: "三分法で決算の際に「仕入／繰越商品（しーくり）」「繰越商品／仕入（くりしー）」を行うのはなぜか、理由を答えよ", answer: "売上原価を「仕入」勘存の残高として算定するため。", hint: "三分法は普段は売上原価が分かりません。そのため、期首の在庫を仕入にプラスし、期末の在庫を仕入から引くことで、仕入勘定を売上原価の金額へと調整します（分記法では都度売買益を出すので不要です）。" },
+      { id: 98, stage: "⑪決算整理仕訳3/3", question: "決算。期首の繰越商品（在庫）は200万円、期末の繰越商品（在庫）は300万円である。三分法の決算整理仕訳を答えよ", answer: "仕入 2,000,000 ／ 繰越商品 2,000,000\n繰越商品 3,000,000 ／ 仕入 3,000,000" },
+      { id: 99, stage: "⑪決算整理仕訳3/3", question: "以下の決算残高から、当期の繰越利益剰余金の変動金額はいくらになるか算出せよ。\n・売上 490円、受取家賃 10円\n・仕入 200円、給料 30円、水道光熱費 10円\n・期首棚卸 50円、期末棚卸 30円", answer: "240円（増加）", hint: "【仕訳の流れ】\n①しーくり：仕入 50／繰商品 50\n②くりしー：繰商品 30／仕入 30 (これにより仕入=売上原価は220に確定)\n③損益振替(収益)：売上 490・受取家賃 10／損益 500\n④損益振替(費用)：損益 260／仕入 220・給料 30・水道光熱費 10\n⑤剰余金振替：損益 240／繰越利益剰余金 240" },
+
+      // 簿記3級⑫税金
+      { id: 100, stage: "⑫税金", question: "税抜100円の商品を現金で仕入れた（税抜経理方式・消費税率10%とする）", answer: "仕入 100・仮払消費税 10 ／ 現金 110", hint: "税抜経理なので、本体は「仕入」、消費税分は「仮払消費税」という資産科目になります。" },
+      { id: 101, stage: "⑫税金", question: "税抜売価200万円（仕入額50万円）の商品を掛け販売した（税抜経理方式・消費税率10%とする）", answer: "売掛金 2,200,000 ／ 売上 2,000,000・仮受消費税 200,000", hint: "三分法なので、売る時は仕入値50万円は関係ありません。" },
+      { id: 102, stage: "⑫税金", question: "決算。仮払消費税の残高が500万円、仮受消費税の残高が600万円であった。納付額を確定させる決算仕訳を行え", answer: "仮受消費税 6,000,000 ／ 仮払消費税 5,000,000・未払消費税 1,000,000", hint: "仮受（客から預かった） ＞ 仮払（仕入時に払った）の差額は, 国へ支払う義務があるため「未払消費税（負債）」になります。" },
+      { id: 103, stage: "⑫税金", question: "決算において、税引前当期純利益が100万円、実効税率が40%である。法人税等の計上仕訳を行え", answer: "法人税等 400,000 ／ 未払法人税等 400,000", hint: "法人税等の計算により、最終的に繰越利益剰余金へ振り替わる金額は60万円（利益100万 − 税金40万）となります。" },
+      { id: 104, stage: "⑫税金", parentId: 103, question: "確定申告を行い, 上記の未払法人税等40万円を小切手を振り出して納付した", answer: "未払法人税等 400,000 ／ 当座預金 400,000" },
+      { id: 105, stage: "⑫税金", question: "期中に、法人税等の中間納付として20万円を小切手を振り出して支払った", answer: "仮払法人税等 200,000 ／ 当座預金 200,000" },
+      { id: 106, stage: "⑫税金", question: "翌期の決算。税引前当期純利益は200万円。実効税率40%。期中に中間納付20万円を支払っている。決算整理仕訳を行え", answer: "法人税等 800,000 ／ 仮払法人税等 200,000・未払法人税等 600,000" },
+      { id: 107, stage: "⑫税金", question: "期中の中間納付額は30万円であった。本日決算を迎え、税引前利益が100万円と確定。実効税率40%として法人税等を確定させる決算仕訳を行え", answer: "法人税等 400,000 ／ 仮払法人税等 300,000・未払法人税等 100,000" },
+      { id: 108, stage: "⑫税金", question: "（単位: 万円）決算。売上 161、仕入 50、給料 20。\nその他取引残高: 売掛金 200、貸倒見積 2%、貸倒引当金残高 3。仮払消費税 6、仮受消費税 16。期首商品 20、期末商品 30。実効税率40%。当期の繰越利益剰余金の増減額は？", answer: "60万円増加", hint: "【解説】\n・貸倒引当金：200万×2% − 3万 ＝ 繰入額 1万\n・消費税相殺：損益には不干渉\n・売上原価：50 + 20 − 30 ＝ 40万\n・税引前利益：売上 161 − (原価 40 + 給料 20 + 貸倒繰入 1) ＝ 100万\n・法人税等：100万 × 40% ＝ 40万\n・純利益：100 − 40 ＝ 60万" },
+
+      // 簿記3級⑬剰余金の配当
+      { id: 109, stage: "⑬剰余金の配当", question: "5月20日、株主総会において、繰越利益剰余金から株主配当金200万円を支払い、また同時に法で定められた利益準備金（配当金の10分の1）を積み立てることを決議した。仕訳は？", answer: "繰越利益剰余金 2,200,000 ／ 未払配当金 2,000,000・利益準備金 200,000", hint: "配当(200万)＋準備金(20万)の合計220万円分, 繰越利益剰余金（純資産）が減少します。" },
+      { id: 110, stage: "⑬剰余金の配当", parentId: 109, question: "6月2日、上記の配当金を当座預金から支払った。なお、配当金の支払に際しては20%の源源税を差し引いて支払った。仕訳は？", answer: "未払配当金 2,000,000 ／ 当座預金 1,600,000・所得税預り金 400,000", hint: "2,000,000 × 20% ＝ 400,000 を「所得税預り金（または預り金）」として源泉徴収します。" },
+
+      // 簿記3級⑭帳簿
+      { id: 111, stage: "⑭帳簿", question: "会計における帳簿は、大きく2つのカテゴリに分類されます。それらは何か？", answer: "主要簿 と 補助簿", hint: "仕訳や元帳などの必須となる“本体”が「主要簿」、それを詳しく補うものが「補助簿」です。" },
+      { id: 112, stage: "⑭帳簿", question: "「主要簿」に分類される代表的な帳簿を2つ答えよ", answer: "仕訳帳 と 総勘定元帳", hint: "この2つがあって初めて簿記の記録が成り立ちます。" },
+      { id: 113, stage: "⑭帳簿", question: "仕訳帳に記入した取引を、総勘定元帳の勘定科目ごとのページに書き写していく作業を何と呼ぶか？", answer: "転記", hint: "仕訳を「科目ごとに分類整理する」イメージです。" },
+      { id: 114, stage: "⑭帳簿", question: "仕訳帳、総勘定元帳以外のすべての帳簿をまとめて「補助簿」という。〇か×か？", answer: "〇" },
+      { id: 115, stage: "⑭帳簿", question: "土地や建物などの資産について、取得年月日、取得原価、減価償却費などを細かく記録しておく補助簿は何か？", answer: "固定資産台帳" },
+      { id: 116, stage: "⑭帳簿", question: "日々の現金の入出金を日付順に記録していく補助簿は何か？", answer: "現金出納帳", hint: "なお、小口現金を管理するものは「小口現金出納帳」と言います。" },
+
+      // 簿記3級⑮伝票
+      { id: 117, stage: "⑮伝票", question: "買掛金支払いのために小切手を振り出した。伝票制を採用している場合、起票する伝票は？", answer: "振替伝票", hint: "「当座預金」の減少であり、「現金」が減少したわけではないので、入金・出金伝票以外の取引を記す「振替伝票」を使います。" },
+      { id: 118, stage: "⑮伝票", question: "土地を現金で購入した。起票する伝票は？", answer: "出金伝票", hint: "現金が減少する取引は「出金伝票」に記載します。" },
+      { id: 119, stage: "⑮伝票", question: "当座預金から現金を引き出して手許に用意した。起票する伝票は？", answer: "入金伝票", hint: "金庫にお集（現金）が増加したため、「入金伝票」となります。" },
+      { id: 120, stage: "⑮伝票", question: "土地100万円を購入。このうち20万円は普通預金から支払い、残額は後払い（ツケ）とした。起票する伝票は？", answer: "振替伝票", hint: "現金の直接的な支払・受取がない取引なので、1枚の「振替伝票」に全ての取引を仕訳します。" },
+      { id: 121, stage: "⑮伝票", question: "土地100万円を購入。このうち20万円は現金で支払い、残額は後払い（ツケ）とした。起票する伝票は？", answer: "出金伝票（20万円） ＋ 振替伝票（80万円）", hint: "現金での支払い部分（20万円）は出金伝票、掛け部分（80万円）は振替伝票として起票します（一部現金取引分解法など）。" },
+      { id: 122, stage: "⑮伝票", question: "伝票制を採用する場合、普段の「仕訳帳」は一切記入されない。〇か×か？", answer: "〇", hint: "試験上のルールとして, 伝票が仕訳帳の代わりとなるため、仕訳帳は省略されます。" },
+      { id: 123, stage: "⑮伝票", question: "1日分の伝票をすべて集計し、勘定科目ごとに日毎の合計を求めて総勘定元帳へまとめて転記するための集計表を何と呼ぶか？", answer: "仕訳日計表", hint: "1日分の各取引データを集約・日計する表です。" },
+
+      // 簿記3級㉑/25未収・未払等
+      { id: 124, stage: "㉑発展(未収・未払等)", question: "×2年2月1日から4ヶ月間、事務所をレンタルする契約をした。家賃（月額1万円）は当月末に支払う。当社の期末日は3月31日である。\n【問】①×2年1月31日、②×2年2月28日、③×2年3月31日、④3/31決算日におけるそれぞれの仕訳は？", answer: "①1/31: 仕訳なし (まだ借りていないため費用も負債もなし)\n②2/28: 支払家賃 10,000 ／ 当座預金 10,000\n③3/31: 支払家賃 10,000 ／ 当座預金 10,000\n④決算仕訳: 仕訳なし (当月分はその月の末にきっちり払っているため、前払・未払等のズレが無く調整不要)", hint: "実態通り2ヶ月分の家賃が費用計上されているため調整は不要です。" },
+
+      // 簿記3級㉒社会保険
+      { id: 125, stage: "㉒社会保険", question: "×1年5月27日、給料30万円を当座預金から支払った。源泉所得税2万円、社会保険料総額6万円（会社と従業員で労使折半）を控除し振り込んだ。仕訳を答えよ", answer: "給料 300,000 ／ 所得税預り金 20,000・社会保険料預り金 30,000・当座預金 250,000", hint: "社会保険料の総額6万円のうち、従業員負担分は「半額の3万円」のみです。会社負担分は支払時に費用計上します。" },
+      { id: 126, stage: "㉒社会保険", question: "×2年3月29日、従業員の給料（計 100万円）を当座預金から支払った。なお各種控除（所得税5万、健康保険6万、厚生年金4万、雇用保険2万）を行った。\n※会社負担の社保は13万（翌月末納付予定）。\n※雇用保険の従業員負担は納付時に清算するため、ここでは会社負担の一時的な従業員立替金として処理する. 仕訳は？", answer: "給料 1,000,000 ／ 所得税預り金 50,000・社会保険料預り金 100,000・従業員立替金 20,000・当座預金 830,000", hint: "控除額合計は 17万円。会社負担の社会保険料13万円は「まだ支払っていない」ため、給料支払い段階では計上しません。" },
+      { id: 127, stage: "㉒社会保険", parentId: 126, question: "（前問(Q126)の続き）本日3月31日の決算を迎え、必要な決算整理仕訳を行え。なお、3/21〜3/31 of 未払給料30万円と、未払法定福利費（会社負担社保）13万円を計上する", answer: "給料 300,000 ／ 未払給料 300,000\n法定福利費 130,000 ／ 未払法定福利費 130,000", hint: "今期に属しているが支払っていない給料と, それに対応する会社負担社保（法定福利費）を決算で計上します。" }
+    ];
+
+    // --- 2. 状態管理オブジェクトの定義 (Gemini用のステートを追加) ---
+    const state = {
+      view: 'select', 
+      questions: [],   
+      activeStage: null, 
+      currentSessionQueue: [], 
+      currentIndexInSession: 0,
+      totalInSession: 0,
+      sessionCorrectCount: 0, 
+      sessionWrongCount: 0,   
+      roundCount: 1, 
+      showAnswer: false, 
+      showHint: false, 
+      accordionOpened: {}, // トップ画面の大枠アコーディオン開閉状態 ('stages', 'analysis', 'aiStyle', 'editor')
+      listDetailOpened: {}, // 問題個別のアコーディオン開閉状態
+      editorActiveStage: '①入門', // 問題編集エリアで現在選ばれているステージ
+      // Gemini API用ステート
+      aiExplanation: "",      // 生成された解説
+      aiLoading: false,       // 解説生成中フラグ
+      chatHistory: [],        // チャットログの配列 [{role: 'user'|'model', text: string}]
+      chatLoading: false      // チャット返答待ちフラグ
+    };
+
+    // --- 3. localStorage との進捗マージ (プレビュー環境のサンドボックス制限に完全対応) ---
+    const STORAGE_KEY = 'sakura_boki3_progress_v2'; // V2に変更
+    const ROUND_STORAGE_KEY = 'sakura_boki3_rounds_v1';
+    
+    let isLocalStorageAvailable = true;
+    try {
+      const testKey = '__sakura_boki_test__';
+      localStorage.setItem(testKey, testKey);
+      localStorage.removeItem(testKey);
+    } catch (e) {
+      isLocalStorageAvailable = false;
+      console.warn("localStorage is blocked in this environment. Falling back to in-memory state.");
+    }
+
+    let memoryStorage = {};
+
+    function getStorageItem(key) {
+      if (isLocalStorageAvailable) {
+        return localStorage.getItem(key);
+      }
+      return memoryStorage[key] || null;
+    }
+
+    function setStorageItem(key, value) {
+      if (isLocalStorageAvailable) {
+        try {
+          localStorage.setItem(key, value);
+          return;
+        } catch (e) {
+          console.warn("localStorage set failed", e);
+        }
+      }
+      memoryStorage[key] = value;
+    }
+
+    function loadProgress() {
+      const saved = getStorageItem(STORAGE_KEY);
+      let progress = {};
+
+      try {
+        progress = saved ? JSON.parse(saved) : {};
+      } catch (e) {
+        console.warn("保存データが壊れていたため、学習進捗を初期化しました。", e);
+        progress = {};
+        setStorageItem(STORAGE_KEY, JSON.stringify({}));
+      }
+      
+      state.questions = rawQuestions.map(q => {
+        const savedState = progress[q.id] || {};
+        return {
+          ...q,
+          isFavorite: savedState.isFavorite || false,
+          isCleared: savedState.isCleared || false,
+          wrongCount: savedState.wrongCount || 0,
+          // 変更されたカスタム問題文の読み込み
+          question: savedState.customQuestion || q.question,
+          originalQuestion: q.question // リセット用にオリジナルを保持
+        };
+      });
+    }
+
+    function saveProgress() {
+      const progress = {};
+      state.questions.forEach(q => {
+        progress[q.id] = {
+          isFavorite: q.isFavorite,
+          isCleared: q.isCleared,
+          wrongCount: q.wrongCount,
+          customQuestion: q.question !== q.originalQuestion ? q.question : null
+        };
+      });
+      setStorageItem(STORAGE_KEY, JSON.stringify(progress));
+    }
+
+    function getRoundMap() {
+      const saved = getStorageItem(ROUND_STORAGE_KEY);
+      if (!saved) return {};
+      try {
+        return JSON.parse(saved) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function getStageRound(stageName) {
+      const rounds = getRoundMap();
+      return Math.max(1, Number(rounds[stageName]) || 1);
+    }
+
+    function setStageRound(stageName, round) {
+      const rounds = getRoundMap();
+      rounds[stageName] = Math.max(1, Number(round) || 1);
+      setStorageItem(ROUND_STORAGE_KEY, JSON.stringify(rounds));
+    }
+
+    function advanceStageRound(stageName) {
+      const nextRound = getStageRound(stageName) + 1;
+      setStageRound(stageName, nextRound);
+      return nextRound;
+    }
+
+    // --- AIの話し方プリセットプロンプト ---
+    const aiStyleOrder = ['default', 'jk', 'maid', 'minimal', 'custom'];
+    const aiStyleLabels = {
+      default: '🔥 ツンデレ熱血簿記講師',
+      jk: '🌸 清楚系やさしい後輩',
+      maid: '☕ 優しい献身的メイドさん',
+      minimal: '⚡ 端的に一言で超ミニマル',
+      custom: '⚙️ 自由カスタマイズ設定'
+    };
+    const defaultAIStyles = {
+      default: "学習者に対して、時に厳しく（「やれよ。おい。今すぐやれ。」という姿勢を崩さず）、極めて明快に仕訳の勘定科目の分類や借方・貸方のロジックを解説する熱血簿記プロ講師。",
+      jk: "清楚で優しく、ちょっと健気な後輩キャラクター。「ここが仕訳のポイントですよ！一緒に合格を目指してがんばりましょう！」と優しく応援してくれる、清楚で前向きな口調。",
+      maid: "「こちらが本日の仕訳の要点でございます。ご安心ください、私が丁寧にご案内いたします」と、極めて礼儀正しく献身的に、落ち着いたメイドさん口調で学習者を導く。",
+      minimal: "余計な雑談、挨拶、導入テキストは一切排除し、仕訳のコアロジックと要点のみを『端的に一言で極めて分かりやすく』1文または2文のみで解説する超スマートAI助手スタイル。",
+      custom: "親しみやすく、学習者のペースに合わせて、仕訳の理由をやさしく噛み砕いて説明する。迷いやすいポイントは短い例えで補足する。"
+    };
+
+    function getAIStylePrompt(styleKey) {
+      return getStorageItem(`sakura_boki_ai_style_prompt_${styleKey}`) || defaultAIStyles[styleKey] || defaultAIStyles.default;
+    }
+
+    function getAISystemPrompt() {
+      const styleKey = getStorageItem('sakura_boki_ai_style') || 'default';
+      const styleText = getAIStylePrompt(styleKey);
+      
+      return `あなたは簿記3級の超プロ講師です。現在、学習者に対して、以下のキャラクター・口調・指示になりきって極めてわかりやすく仕訳の勘定科目の分類や借方・貸方のロジックを解説してください。
+
+キャラクター口調設定：
+${styleText}
+
+【解説の共通ルール】
+・150字から250字程度（ミニマルの場合は100字以内）で簡潔に、脳にすっと残るようまとめてください。
+・数式や仕訳はわかりやすく整形してください。`;
+    }
+
+    // --- 4. Web Audio API によるシンセ効果音 ---
+    let audioCtx = null;
+
+    function initAudio() {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      } catch (e) {
+        console.error("Audio init error", e);
+      }
+    }
+
+    function playTone(freq, type, duration, delay = 0, volume = 0.08) {
+      try {
+        initAudio();
+        if (!audioCtx) return;
+        
+        setTimeout(() => {
+          const osc = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          
+          osc.type = type; 
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          
+          gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+          
+          osc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        }, delay * 1000);
+      } catch (e) {
+        console.error("Audio error", e);
+      }
+    }
+
+    const sounds = {
+      tap: () => playTone(600, 'sine', 0.08, 0, 0.06),
+      favorite: () => {
+        playTone(880, 'sine', 0.1, 0, 0.05);
+        playTone(1320, 'sine', 0.15, 0.06, 0.05);
+      },
+      unfavorite: () => {
+        playTone(1100, 'sine', 0.08, 0, 0.05);
+        playTone(740, 'sine', 0.12, 0.06, 0.05);
+      },
+      answer: () => {
+        playTone(523.25, 'triangle', 0.15, 0, 0.07); 
+        playTone(659.25, 'triangle', 0.15, 0.06, 0.07); 
+        playTone(783.99, 'triangle', 0.2, 0.12, 0.07); 
+      },
+      easy: () => {
+        playTone(523.25, 'sine', 0.08, 0, 0.08); 
+        playTone(659.25, 'sine', 0.08, 0.04, 0.08); 
+        playTone(783.99, 'sine', 0.08, 0.08, 0.08); 
+        playTone(1046.5, 'sine', 0.25, 0.12, 0.08); 
+      },
+      hard: () => {
+        playTone(392, 'sawtooth', 0.12, 0, 0.06); 
+        playTone(349.23, 'sawtooth', 0.12, 0.06, 0.06); 
+        playTone(311.13, 'sawtooth', 0.2, 0.12, 0.06); 
+      },
+      roundClear: () => {
+        playTone(523.25, 'sine', 0.15, 0, 0.08);
+        playTone(659.25, 'sine', 0.15, 0.08, 0.08);
+        playTone(783.99, 'sine', 0.15, 0.16, 0.08);
+        playTone(1046.5, 'sine', 0.4, 0.24, 0.08);
+      },
+      perfectClear: () => {
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093.0];
+        notes.forEach((freq, idx) => {
+          playTone(freq, 'triangle', 0.2, idx * 0.07, 0.06);
+        });
+        setTimeout(() => {
+          playTone(1046.5, 'sine', 0.5, 0, 0.05);
+          playTone(1318.51, 'sine', 0.5, 0, 0.05);
+          playTone(1567.98, 'sine', 0.5, 0, 0.05);
+        }, 500);
+      }
+    };
+
+    // --- 5. Gemini API 呼び出し (体験モックモード機能付き) ---
+    // APIキーを入力して保存すれば、本物のAIが動作。未入力なら賢いモックが動作！
+    
+    // APIキーを取得 (ユーザー入力値 or 自動付与)
+    function getApiKey() {
+      return getStorageItem('sakura_boki_api_key') || "";
+    }
+
+    // 体験用のモック解説ジェネレーター (APIキー未入力時でも抜群に機能！)
+    function generateMockResponse(question, answer, charStyle) {
+      let isCredit = answer.includes("売掛金") || answer.includes("売上");
+      let isDebit = answer.includes("仕入") || answer.includes("買掛金");
+      let isCash = answer.includes("現金") || answer.includes("当座預金") || answer.includes("普通預金");
+      
+      let baseLogic = "この取引は、資産・負債・純資産・費用・収益の増減が美しく組み合わさっています。";
+      if (isDebit && !isCredit) {
+        baseLogic = "仕入は『費用』の発生なので左（借方）に、買掛金は『負債』の増加なので右（貸方）に配置します。簿記の超基本ルールですね。";
+      } else if (isCredit && !isDebit) {
+        baseLogic = "売上は『収益』の発生なので右（貸方）に、売掛金は『資産』の増加なので左（借方）に記帳します。";
+      } else if (isCash) {
+        baseLogic = "現金や預金などの『資産』は、増えたら左（借方）、減ったら右（貸方）に配置するのが大鉄則です！";
+      }
+
+      if (charStyle === 'default') {
+        return `やれよ。おい。今すぐこの仕訳のロジックを脳に刷り込みなさい！\n${baseLogic}\nこれくらい1秒で仕訳できなきゃ、簿記3級なんて夢のまた夢よ！次も気合い入れてやりなさい！`;
+      } else if (charStyle === 'jk') {
+        return `お疲れ様です！この仕訳のロジック、すっごくきれいですよね。\n${baseLogic}\n一歩ずつ合格に向けて進んでいる感じがして、とてもいい流れです。次もがんばりましょう！`;
+      } else if (charStyle === 'maid') {
+        return `あなた、本日の仕訳の要点を丁寧にご説明いたします。\n${baseLogic}\nここを押さえれば、この仕訳はかなり理解しやすくなります。いつでも落ち着いて進めていきましょう。`;
+      } else if (charStyle === 'minimal') {
+        return `要点：${baseLogic.replace("配置します。", "").replace("記帳します。", "")}。左右の増減ルールを記憶してください。`;
+      } else {
+        return `【カスタムAI先生】\n仕訳：${answer}\n論理：${baseLogic}\nあなたの設定した個性で応援しています！`;
+      }
+    }
+
+    async function callGeminiAPI(systemPrompt, userQuery) {
+      const apiKeyValue = getApiKey();
+      if (!apiKeyValue) {
+        // キー未入力時は1秒のローディング演出を入れてモックを返す (Previewでの動作を完全保障！)
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const currentStyle = getStorageItem('sakura_boki_ai_style') || 'default';
+        return generateMockResponse(state.currentSessionQueue[state.currentIndexInSession].question, state.currentSessionQueue[state.currentIndexInSession].answer, currentStyle);
+      }
+
+      const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+      
+      const payload = {
+        contents: [
+          {
+            parts: [{ text: userQuery }]
+          }
+        ],
+        system_instruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        generationConfig: {
+          temperature: 0.7,
+          responseMimeType: "text/plain"
+        }
+      };
+
+      let delay = 1000;
+      for (let i = 0; i < 3; i++) {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKeyValue
+            },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API Error: ${response.status} ${errorText}`);
+          }
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) return text;
+          throw new Error("No text returned in response.");
+        } catch (error) {
+          if (i === 2) {
+            throw error; 
+          }
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; 
+        }
+      }
+    }
+
+    // AI解説生成関数
+    async function generateAIExplanation(q) {
+      initAudio();
+      sounds.tap();
+      state.aiLoading = true;
+      state.aiExplanation = "";
+      render();
+
+      const systemPrompt = getAISystemPrompt();
+      const userQuery = `問題：${q.question}\n答え（仕訳）：${q.answer}\nヒント：${q.hint || "なし"}\n\nこの仕訳について、なぜその勘定科目になるのか、借方と貸方の配置の理由を含めてキャラクターになりきって優しく教えて。`;
+
+      try {
+        const text = await callGeminiAPI(systemPrompt, userQuery);
+        state.aiExplanation = text;
+      } catch (e) {
+        state.aiExplanation = "エラー：AI解説の生成に失敗しました。Geminiのキーが有効か、または少し待ってから再度お試しください。";
+      } finally {
+        state.aiLoading = false;
+        render();
+      }
+    }
+
+    // AI質問チャット送信関数
+    async function sendChatMessage(q, inputId) {
+      initAudio();
+      sounds.tap();
+      const inputEl = document.getElementById(inputId);
+      if (!inputEl) return;
+      const userMsg = inputEl.value.trim();
+      if (!userMsg) return;
+
+      state.chatHistory.push({ role: 'user', text: userMsg });
+      state.chatLoading = true;
+      render();
+      scrollChatToBottom();
+
+      const systemPrompt = getAISystemPrompt() + "\n学習者から質問を受けました。設定されたキャラクターと口調を完全に崩さずに、最高にわかりやすく答えてください。";
+      
+      let conversationContext = `問題：${q.question}\n答え（仕訳）：${q.answer}\n\n`;
+      state.chatHistory.forEach(h => {
+        conversationContext += `${h.role === 'user' ? '生徒' : '講師'}: ${h.text}\n`;
+      });
+      conversationContext += "\nこれに対する最適な回答を学習者に向けて作成してください。";
+
+      try {
+        const reply = await callGeminiAPI(systemPrompt, conversationContext);
+        state.chatHistory.push({ role: 'model', text: reply });
+      } catch (e) {
+        state.chatHistory.push({ role: 'model', text: "エラー：回答を生成できませんでした。もう一度送信してください。" });
+      } finally {
+        state.chatLoading = false;
+        render();
+        scrollChatToBottom();
+      }
+    }
+
+    function scrollChatToBottom() {
+      setTimeout(() => {
+        const container = document.getElementById('chat-log-container');
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }, 50);
+    }
+
+    // --- 6. 問題のカスタム上書き保存・元に戻すロジック ---
+    function updateQuestionText(qId, inputId) {
+      initAudio();
+      sounds.tap();
+      const inputEl = document.getElementById(inputId);
+      if (!inputEl) return;
+      
+      const newText = inputEl.value.trim();
+      if (!newText) {
+        showModal("警告", "問題文を空にすることはできません。");
+        return;
+      }
+      
+      const q = state.questions.find(item => item.id === qId);
+      if (q) {
+        q.question = newText;
+        saveProgress();
+        showModal("変更完了", `Q${qId} の問題文を更新しました。プレイ画面や一覧画面に即座に反映されます。🌸`);
+        render();
+      }
+    }
+
+    function restoreQuestionDefault(qId) {
+      initAudio();
+      sounds.tap();
+      const q = state.questions.find(item => item.id === qId);
+      if (q) {
+        q.question = q.originalQuestion;
+        saveProgress();
+        
+        // 【ご要望対応】変更後入力テキストエリアの値も即座にデフォルト値に完全復元！
+        const inputEl = document.getElementById(`editor-input-${qId}`);
+        if (inputEl) {
+          inputEl.value = q.originalQuestion;
+        }
+        
+        showModal("復元完了", `Q${qId} の問題文をデフォルトに戻しました。`);
+        render();
+      }
+    }
+
+    // AIキャラクター設定の保存
+    function changeAICharacter(styleKey) {
+      initAudio();
+      sounds.tap();
+      setStorageItem('sakura_boki_ai_style', styleKey);
+      render();
+    }
+
+    function saveCustomAIStyle(inputId) {
+      initAudio();
+      sounds.tap();
+      const inputEl = document.getElementById(inputId);
+      if (inputEl) {
+        setStorageItem('sakura_boki_ai_style_prompt_custom', inputEl.value.trim());
+        showModal("カスタム完了", "AIの話し方カスタムプロンプトを保存しました！プレイ画面で試してみてね");
+        render();
+      }
+    }
+
+    function saveAIStylePrompt(styleKey, inputId) {
+      initAudio();
+      sounds.tap();
+      const inputEl = document.getElementById(inputId);
+      if (!inputEl) return;
+      setStorageItem(`sakura_boki_ai_style_prompt_${styleKey}`, inputEl.value.trim());
+      showModal("保存しました", `${aiStyleLabels[styleKey] || 'AIパートナー'}のプロンプトを保存しました。`);
+      render();
+    }
+
+    function resetAIStylePrompt(styleKey) {
+      initAudio();
+      sounds.tap();
+      setStorageItem(`sakura_boki_ai_style_prompt_${styleKey}`, "");
+      const inputEl = document.getElementById(`ai-style-prompt-${styleKey}`);
+      if (inputEl) {
+        inputEl.value = defaultAIStyles[styleKey] || defaultAIStyles.default;
+      }
+      showModal("初期値に戻しました", `${aiStyleLabels[styleKey] || 'AIパートナー'}のプロンプトを初期設定に戻しました。`);
+      render();
+    }
+
+    function saveUserApiKey(inputId) {
+      initAudio();
+      sounds.tap();
+      const inputEl = document.getElementById(inputId);
+      if (inputEl) {
+        setStorageItem('sakura_boki_api_key', inputEl.value.trim());
+        showModal("APIキー設定", "Gemini APIキーをこのブラウザに保存しました。本物のAI解説とチャットが使用可能になりました🌸");
+        render();
+      }
+    }
+
+    // --- 7. アプリケーション制御ロジック ---
+
+    function getStageStats(stageName) {
+      const stageQuestions = state.questions.filter(q => q.stage === stageName);
+      const total = stageQuestions.length;
+      const cleared = stageQuestions.filter(q => q.isCleared).length;
+      return { total, cleared, remaining: total - cleared };
+    }
+
+    function getFavoriteStats() {
+      const favQuestions = state.questions.filter(q => q.isFavorite);
+      const total = favQuestions.length;
+      const cleared = favQuestions.filter(q => q.isCleared).length;
+      return { total, cleared, remaining: total - cleared };
+    }
+
+    function startSession(stageName, isNextRound = false) {
+      initAudio();
+
+      state.activeStage = stageName;
+      state.roundCount = getStageRound(stageName);
+      let targetQuestions = [];
+      
+      if (stageName === 'favorite') {
+        targetQuestions = state.questions.filter(q => q.isFavorite);
+        if (targetQuestions.length === 0) {
+          showModal("お気に入り", "お気に入り登録された問題がありません。\n画面下部の一覧から☆マークを押して登録してね！🌸");
+          return;
+        }
+      } else {
+        targetQuestions = state.questions.filter(q => q.stage === stageName);
+      }
+      
+      let uncleared = targetQuestions.filter(q => !q.isCleared);
+      
+      if (uncleared.length === 0) {
+        state.roundCount = advanceStageRound(stageName);
+        targetQuestions.forEach(q => q.isCleared = false);
+        saveProgress();
+        uncleared = [...targetQuestions];
+      }
+      
+      state.currentSessionQueue = shuffle(uncleared);
+      state.currentIndexInSession = 0;
+      state.totalInSession = state.currentSessionQueue.length;
+      state.sessionCorrectCount = 0;
+      state.sessionWrongCount = 0;
+      state.showAnswer = false;
+      state.showHint = false;
+      // Gemini用一時ステートをリセット
+      state.aiExplanation = "";
+      state.aiLoading = false;
+      state.chatHistory = [];
+      state.chatLoading = false;
+      state.view = 'play';
+      
+      sounds.tap();
+      render();
+    }
+
+    function shuffle(array) {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    const ANSWER_SCROLL_DELAY_MS = 650;
+
+    function scrollToAnswerActionArea() {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const target = document.getElementById('answer-action-area');
+          if (!target) return;
+
+          const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          target.scrollIntoView({
+            behavior: prefersReducedMotion ? 'auto' : 'smooth',
+            block: 'center',
+            inline: 'nearest'
+          });
+        }, ANSWER_SCROLL_DELAY_MS);
+      });
+    }
+
+    function toggleAnswer() {
+      if (state.showAnswer) return;
+      sounds.answer();
+      state.showAnswer = true;
+      render();
+      scrollToAnswerActionArea();
+    }
+
+    function pressEasy() {
+      sounds.easy();
+      const currentQ = state.currentSessionQueue[state.currentIndexInSession];
+      currentQ.isCleared = true;
+      state.sessionCorrectCount++;
+      
+      saveProgress();
+      nextQuestion();
+    }
+
+    function pressHard() {
+      sounds.hard();
+      const currentQ = state.currentSessionQueue[state.currentIndexInSession];
+      currentQ.isCleared = false;
+      currentQ.wrongCount++;
+      state.sessionWrongCount++;
+      
+      saveProgress();
+      nextQuestion();
+    }
+
+    function nextQuestion() {
+      state.currentIndexInSession++;
+      state.showAnswer = false;
+      state.showHint = false;
+      state.aiExplanation = "";
+      state.aiLoading = false;
+      state.chatHistory = [];
+      state.chatLoading = false;
+      
+      if (state.currentIndexInSession >= state.totalInSession) {
+        const stats = state.activeStage === 'favorite' ? getFavoriteStats() : getStageStats(state.activeStage);
+        
+        if (stats.remaining === 0) {
+          sounds.perfectClear();
+        } else {
+          sounds.roundClear();
+        }
+        
+        state.view = 'result';
+      }
+      render();
+    }
+
+    function toggleFavorite(id, e) {
+      if (e) e.stopPropagation(); 
+      initAudio();
+      
+      const q = state.questions.find(item => item.id === id);
+      if (q) {
+        q.isFavorite = !q.isFavorite;
+        if (q.isFavorite) {
+          sounds.favorite();
+        } else {
+          sounds.unfavorite();
+        }
+        saveProgress();
+        render();
+      }
+    }
+
+    // トップ画面の大枠アコーディオンの開閉をトグル
+    function toggleAccordion(key) {
+      initAudio();
+      sounds.tap();
+      state.accordionOpened[key] = !state.accordionOpened[key];
+      render();
+    }
+
+    // 問題個別のアコーディオン開閉をトグル
+    function toggleListDetail(id) {
+      initAudio();
+      sounds.tap();
+      state.listDetailOpened[id] = !state.listDetailOpened[id];
+      render();
+    }
+
+    function resetAllProgress() {
+      showModal(
+        "完全リセット",
+        "これまでの全学習進捗（お気に入り、クリア状況、間違い回数）を完全に消去します。本当によろしいですか？",
+        true,
+        () => {
+          if (isLocalStorageAvailable) {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(ROUND_STORAGE_KEY);
+          } else {
+            delete memoryStorage[STORAGE_KEY];
+            delete memoryStorage[ROUND_STORAGE_KEY];
+          }
+          loadProgress();
+          showModal("リセット完了", "すべてのデータを初期化しました。新たな気持ちで頑張りましょう！");
+          render();
+        }
+      );
+    }
+
+    function goBackToSelect() {
+      sounds.tap();
+      state.view = 'select';
+      state.activeStage = null;
+      render();
+    }
+
+    // --- 8. UI レンダリング (HTML 動的生成) ---
+
+    const stageNames = [...new Set(rawQuestions.map(q => q.stage))];
+
+    function render() {
+      const root = document.getElementById('app-root');
+      
+      if (state.view === 'select') {
+        root.innerHTML = renderSelectView();
+      } else if (state.view === 'play') {
+        root.innerHTML = renderPlayView();
+      } else if (state.view === 'result') {
+        root.innerHTML = renderResultView();
+      }
+    }
+
+    // 8-1. トップ画面 (完全にアコーディオンで整理され、上から順番に配置)
+    function renderSelectView() {
+      const favStats = getFavoriteStats();
+      const hasFavorites = favStats.total > 0;
+      
+      // AIスタイルのロード
+      const currentAIStyle = getStorageItem('sakura_boki_ai_style') || 'default';
+      const userApiKey = getApiKey();
+
+      // ① 「ごちゃまぜお気に入り出題」
+      const favoriteButtonHtml = `
+        <div class="mb-4">
+          <button onclick="startSession('favorite')" 
+            class="btn-bubbly w-full py-3.5 px-5 rounded-3xl flex items-center justify-between transition-all font-black text-slate-800 border-b-4 border-[#2471A3] shadow-md
+            ${hasFavorites ? 'bg-[#5DADE2] text-white hover:translate-y-[2px] active:border-b-2' : 'bg-slate-200 text-slate-400 border-slate-300 opacity-60 cursor-not-allowed'}"
+            ${hasFavorites ? '' : 'disabled'}>
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">${hasFavorites ? '🌟' : '⭐'}</span>
+              <div class="text-left">
+                <p class="text-sm tracking-tight font-black">ごちゃまぜお気に入り出題</p>
+                <p class="text-[10px] font-bold opacity-85">全ステージの星付き問題だけで高速特訓</p>
+              </div>
+            </div>
+            <span class="text-xs font-bold font-mono bg-white/30 py-1 px-2.5 rounded-full border border-sky-300 text-white">
+              ${favStats.total}問
+            </span>
+          </button>
+        </div>
+      `;
+
+      // ② 「ステージ一覧（ステージを選ぶ）」アコーディオン
+      const isStagesOpen = state.accordionOpened['stages'] || false;
+      let stageButtonsGridHtml = '';
+      if (isStagesOpen) {
+        stageButtonsGridHtml = `<div class="grid grid-cols-2 gap-3 p-4 bg-sky-50/50 rounded-b-2xl border-t border-sky-100 animate-fade-in">`;
+        stageNames.forEach(stage => {
+          const stats = getStageStats(stage);
+          const percent = Math.round((stats.cleared / stats.total) * 100);
+          const stageRound = getStageRound(stage);
+          stageButtonsGridHtml += `
+            <div class="bg-white rounded-2xl p-3 border border-sky-100 shadow-sm flex flex-col justify-between">
+              <div>
+                <div class="flex justify-between items-start">
+                  <span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 tracking-wider">STAGE</span>
+                  <span class="text-[10px] font-bold text-sky-400 font-mono">${stageRound}周目 ${stats.cleared}/${stats.total}問</span>
+                </div>
+                <h4 class="text-xs font-black text-slate-800 mt-1 mb-2 leading-tight">${stage}</h4>
+              </div>
+              <div>
+                <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mb-2">
+                  <div class="bg-gradient-to-r from-sky-400 to-sky-500 h-full rounded-full" style="width: ${percent}%"></div>
+                </div>
+                <button onclick="startSession('${stage}')" class="btn-bubbly w-full bg-[#3498DB] hover:bg-[#2980B9] text-white font-black text-[10px] py-1.5 px-2 rounded-lg shadow-sm tracking-wider text-center">
+                  解く 🚀
+                </button>
+              </div>
+            </div>
+          `;
+        });
+        stageButtonsGridHtml += `</div>`;
+      }
+
+      const stagesAccordionHtml = `
+        <div class="bg-white rounded-3xl border-2 border-sky-100 shadow-[0_4px_0_#9DC6E4] mb-4 overflow-hidden">
+          <div onclick="toggleAccordion('stages')" class="bg-[#D6EAF8] px-4 py-3 flex justify-between items-center cursor-pointer border-b-2 border-sky-200 select-none">
+            <div>
+              <h4 class="text-sm font-black text-slate-800 flex items-center gap-1.5">📖 ステージを選ぶ (全${stageNames.length}ステージ)</h4>
+              <p class="text-[10px] text-sky-950/65 font-bold mt-0.5">講義・動画ごとの仕訳を集中して解きまくる</p>
+            </div>
+            <div class="text-sky-800 font-bold text-xs bg-white/80 w-6 h-6 rounded-full flex items-center justify-center shadow-sm">
+              ${isStagesOpen ? '▲' : '▼'}
+            </div>
+          </div>
+          ${stageButtonsGridHtml}
+        </div>
+      `;
+
+      // ③ 「全問題リスト・分析」アコーディオン
+      const isAnalysisOpen = state.accordionOpened['analysis'] || false;
+      let analysisListHtml = '';
+      if (isAnalysisOpen) {
+        analysisListHtml += `<div class="p-4 bg-sky-50/50 rounded-b-2xl border-t border-sky-100 space-y-3 max-h-[350px] overflow-y-auto animate-fade-in">`;
+        stageNames.forEach(stage => {
+          const stats = getStageStats(stage);
+          analysisListHtml += `
+            <div class="border-b border-sky-100/50 pb-2 last:border-0 last:pb-0">
+              <div onclick="toggleAccordion('list_${stage}')" class="flex justify-between items-center cursor-pointer text-xs font-black text-slate-700 hover:text-sky-600 select-none">
+                <span>📁 ${stage}</span>
+                <span class="font-mono text-[10px] text-slate-400">楽勝: ${stats.cleared}/${stats.total} ${state.accordionOpened['list_'+stage] ? '▲' : '▼'}</span>
+              </div>
+          `;
+          
+          if (state.accordionOpened['list_'+stage]) {
+            analysisListHtml += `<div class="mt-2 space-y-1.5 pl-2 border-l border-dashed border-sky-200 animate-fade-in">`;
+            const sQuestions = state.questions.filter(q => q.stage === stage);
+            sQuestions.forEach(q => {
+              const isDetailOpen = state.listDetailOpened[q.id] || false;
+              let bgClass = 'bg-sky-50 text-sky-950 border border-sky-100';
+              let wrongBadge = '';
+              if (q.wrongCount === 1) {
+                bgClass = 'bg-blue-50 text-blue-900 border border-blue-200';
+                wrongBadge = `<span class="bg-blue-400 text-white text-[9px] px-1 rounded ml-1">⚠️ 1回</span>`;
+              } else if (q.wrongCount === 2) {
+                bgClass = 'bg-orange-50 text-orange-950 border border-orange-200';
+                wrongBadge = `<span class="bg-orange-400 text-white text-[9px] px-1 rounded ml-1">🔥 2回</span>`;
+              } else if (q.wrongCount >= 3) {
+                bgClass = 'bg-rose-100 text-rose-950 border border-rose-300';
+                wrongBadge = `<span class="bg-rose-500 text-white text-[9px] px-1 rounded ml-1">💀 ${q.wrongCount}回</span>`;
+              }
+              const clearedLabel = q.isCleared ? '<span class="text-[9px] text-sky-600 bg-sky-100 px-1 rounded mr-1">楽勝済</span>' : '';
+
+              analysisListHtml += `
+                <div class="text-xs pb-1.5 border-b border-sky-100 last:border-0 last:pb-0">
+                  <div class="flex items-start justify-between cursor-pointer" onclick="toggleListDetail(${q.id})">
+                    <span class="flex-1 pr-1 font-bold text-slate-600 text-left"><span class="font-mono text-sky-400 mr-1">Q${q.id}</span> ${clearedLabel} ${escapeHtml(q.question)}</span>
+                    <span class="flex items-center gap-1">${wrongBadge} <button onclick="toggleFavorite(${q.id}, event)" class="text-sm">${q.isFavorite ? '⭐' : '☆'}</button></span>
+                  </div>
+                  <div class="transition-all duration-200 overflow-hidden ${isDetailOpen ? 'max-h-48 mt-1' : 'max-h-0'}">
+                    <div class="p-2 rounded-xl text-[10px] ${bgClass} font-mono whitespace-pre-wrap">${escapeHtml(q.answer)}</div>
+                  </div>
+                </div>
+              `;
+            });
+            analysisListHtml += `</div>`;
+          }
+          analysisListHtml += `</div>`;
+        });
+        analysisListHtml += `</div>`;
+      }
+
+      const analysisAccordionHtml = `
+        <div class="bg-white rounded-3xl border-2 border-sky-100 shadow-[0_4px_0_#9DC6E4] mb-4 overflow-hidden">
+          <div onclick="toggleAccordion('analysis')" class="bg-[#D6EAF8] px-4 py-3 flex justify-between items-center cursor-pointer border-b-2 border-sky-200 select-none">
+            <div>
+              <h4 class="text-sm font-black text-slate-800 flex items-center gap-1.5">📊 全問題リスト・苦手度分析</h4>
+              <p class="text-[10px] text-sky-950/65 font-bold mt-0.5">間違えた回数に応じて問題行のカラーが自動変化</p>
+            </div>
+            <div class="text-sky-800 font-bold text-xs bg-white/80 w-6 h-6 rounded-full flex items-center justify-center shadow-sm">
+              ${isAnalysisOpen ? '▲' : '▼'}
+            </div>
+          </div>
+          ${analysisListHtml}
+        </div>
+      `;
+
+      // ④ 「AIパートナー設定」アコーディオン
+      const isAIStyleOpen = state.accordionOpened['aiStyle'] || false;
+      let aiStyleHtml = '';
+      if (isAIStyleOpen) {
+        const aiStyleDescriptions = {
+          default: '厳しめに背中を押しつつ、仕訳ロジックを明快に説明します。',
+          jk: 'やさしく前向きに励ましながら、親しみやすい口調で説明します。',
+          maid: '丁寧で落ち着いた敬語で、手順をやわらかく案内します。',
+          minimal: '雑談を省き、要点だけを短く説明します。',
+          custom: '自由に作った性格・口調で説明します。'
+        };
+        const aiStyleOptionsHtml = aiStyleOrder.map(styleKey => `
+              <label class="flex items-start gap-2 cursor-pointer font-bold bg-white p-2.5 rounded-xl border border-sky-100">
+                <input class="mt-1" type="radio" name="ai-style-radio" value="${styleKey}" ${currentAIStyle === styleKey ? 'checked' : ''} onclick="changeAICharacter('${styleKey}')">
+                <div>
+                  <span class="font-black text-slate-800">${aiStyleLabels[styleKey]}</span>
+                  <p class="text-[10px] text-slate-400 mt-0.5">${aiStyleDescriptions[styleKey]}</p>
+                </div>
+              </label>
+        `).join('');
+        const aiPromptEditorsHtml = aiStyleOrder.map(styleKey => {
+          const inputId = `ai-style-prompt-${styleKey}`;
+          return `
+              <div class="bg-white p-3 rounded-2xl border border-sky-100 space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-black text-slate-700 text-[11px]">${aiStyleLabels[styleKey]}</span>
+                  ${currentAIStyle === styleKey ? '<span class="bg-sky-100 text-sky-700 text-[9px] font-black px-2 py-0.5 rounded-full">選択中</span>' : ''}
+                </div>
+                <textarea id="${inputId}" rows="3"
+                  class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold focus:border-sky-400 outline-none leading-relaxed text-[11px]">${escapeHtml(getAIStylePrompt(styleKey))}</textarea>
+                <div class="grid grid-cols-2 gap-2">
+                  <button onclick="saveAIStylePrompt('${styleKey}', '${inputId}')" class="btn-bubbly py-2 bg-[#3498DB] hover:bg-[#2980B9] text-white font-black rounded-xl text-center shadow-sm text-[11px]">
+                    保存
+                  </button>
+                  <button onclick="resetAIStylePrompt('${styleKey}')" class="btn-bubbly py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-xl text-center shadow-sm text-[11px]">
+                    初期値に戻す
+                  </button>
+                </div>
+              </div>
+          `;
+        }).join('');
+
+        aiStyleHtml = `
+          <div class="p-4 bg-sky-50/50 rounded-b-2xl border-t border-sky-100 space-y-4 text-xs text-left animate-fade-in">
+            <p class="font-bold text-slate-600">解説を生成・チャットするAIの性格を選べます。下の欄で5パターンすべてのプロンプトを編集できます。</p>
+            
+            <div class="space-y-2">
+              ${aiStyleOptionsHtml}
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <span class="font-black text-slate-700 block">5パターンのプロンプト編集</span>
+                <p class="text-[10px] text-slate-500 font-bold mt-0.5">保存すると、選択中のAI解説・チャットに反映されます。</p>
+              </div>
+              ${aiPromptEditorsHtml}
+            </div>
+
+            <!-- APIキー設定欄 -->
+            <div class="bg-[#EBF5FB] p-3 rounded-2xl border border-sky-200 space-y-2 mt-2">
+              <span class="font-black text-sky-800 block">🔑 Gemini APIキー設定 (任意)</span>
+              <p class="text-[9px] text-sky-950/60 leading-relaxed font-bold">※キーを入力すると、本物の最新AIがチャットや解説を担当します。未入力時はオフライン用の【体験モック解説モード】で安全に動作します！🌸</p>
+              <input id="user-gemini-key-input" type="password" placeholder="AIキーをペースト..." value="${escapeHtml(userApiKey)}"
+                class="w-full bg-white border border-slate-200 rounded-xl p-2 font-bold focus:border-sky-400 outline-none leading-relaxed text-[10px]">
+              <button onclick="saveUserApiKey('user-gemini-key-input')" class="btn-bubbly w-full py-2 bg-[#2ECC71] text-white font-black rounded-xl text-center shadow-sm">
+                APIキーをこのブラウザに保存する 💾
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      const aiStyleAccordionHtml = `
+        <div class="bg-white rounded-3xl border-2 border-sky-100 shadow-[0_4px_0_#9DC6E4] mb-4 overflow-hidden">
+          <div onclick="toggleAccordion('aiStyle')" class="bg-[#D6EAF8] px-4 py-3 flex justify-between items-center cursor-pointer border-b-2 border-sky-200 select-none">
+            <div>
+              <h4 class="text-sm font-black text-slate-800 flex items-center gap-1.5">🧠 AIパートナー設定</h4>
+              <p class="text-[10px] text-sky-950/65 font-bold mt-0.5">清楚系JK・メイド・極限ミニマルなど解説の話し方を自由変更</p>
+            </div>
+            <div class="text-sky-800 font-bold text-xs bg-white/80 w-6 h-6 rounded-full flex items-center justify-center shadow-sm">
+              ${isAIStyleOpen ? '▲' : '▼'}
+            </div>
+          </div>
+          ${aiStyleHtml}
+        </div>
+      `;
+
+      // ⑤ 「問題文の編集・注釈の追加」アコーディオン
+      const isEditorOpen = state.accordionOpened['editor'] || false;
+      let editorHtml = '';
+      if (isEditorOpen) {
+        // 現在選ばれているステージの問題をロード
+        const filteredEditorQuestions = state.questions.filter(q => q.stage === state.editorActiveStage);
+        
+        editorHtml = `
+          <div class="p-4 bg-sky-50/50 rounded-b-2xl border-t border-sky-100 space-y-4 text-xs text-left animate-fade-in">
+            <p class="font-bold text-slate-600">問題文を自由に編集・注釈を上書きできます。仕訳がより理解しやすくなります。</p>
+            
+            <!-- 編集ステージ選択プルダウン -->
+            <div class="flex items-center gap-2">
+              <span class="font-black text-slate-700 whitespace-nowrap">編集対象:</span>
+              <select onchange="initAudio(); state.editorActiveStage = this.value; render();" class="flex-1 bg-white border border-sky-200 rounded-xl p-2 font-black outline-none focus:border-sky-400">
+                ${stageNames.map(s => `<option value="${s}" ${state.editorActiveStage === s ? 'selected' : ''}>${s}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- 選択された問題の編集フォームリスト -->
+            <div class="space-y-4 mt-2 max-h-[300px] overflow-y-auto pr-1">
+              ${filteredEditorQuestions.map(q => `
+                <div class="bg-white p-3 rounded-2xl border border-sky-100 space-y-2 shadow-sm animate-fade-in">
+                  <div class="flex justify-between items-center border-b border-slate-100 pb-1">
+                    <span class="font-black text-sky-600 font-mono">Q${q.id} (${q.stage})</span>
+                    <button onclick="restoreQuestionDefault(${q.id})" class="text-[9px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 py-0.5 px-2 rounded-full border border-rose-100">デフォルトに戻す</button>
+                  </div>
+                  
+                  <div>
+                    <span class="text-[10px] font-black text-slate-400 block mb-1">【変更前の問題（デフォルト）】</span>
+                    <p class="text-[11px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-xl border border-slate-100 font-bold whitespace-pre-wrap">${escapeHtml(q.originalQuestion)}</p>
+                  </div>
+
+                  <div>
+                    <span class="text-[10px] font-black text-sky-600 block mb-1">【変更後の問題（ここに自由に追記・編集してね）】</span>
+                    <textarea id="editor-input-${q.id}" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold focus:border-sky-400 outline-none leading-relaxed text-[11px]">${escapeHtml(q.question)}</textarea>
+                  </div>
+
+                  <button onclick="updateQuestionText(${q.id}, 'editor-input-${q.id}')" class="btn-bubbly w-full py-1.5 bg-[#5EF2D3] text-emerald-950 font-black rounded-xl text-center shadow-sm text-[11px]">
+                    問題文を保存する 💾
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      const editorAccordionHtml = `
+        <div class="bg-white rounded-3xl border-2 border-sky-100 shadow-[0_4px_0_#9DC6E4] mb-8 overflow-hidden">
+          <div onclick="toggleAccordion('editor')" class="bg-[#D6EAF8] px-4 py-3 flex justify-between items-center cursor-pointer border-b-2 border-sky-200 select-none">
+            <div>
+              <h4 class="text-sm font-black text-slate-800 flex items-center gap-1.5">✏️ 問題文の編集・注釈の追加</h4>
+              <p class="text-[10px] text-sky-950/65 font-bold mt-0.5">全問題のテキストを自由に書き換えて、自分用の問題集に。</p>
+            </div>
+            <div class="text-sky-800 font-bold text-xs bg-white/80 w-6 h-6 rounded-full flex items-center justify-center shadow-sm">
+              ${isEditorOpen ? '▲' : '▼'}
+            </div>
+          </div>
+          ${editorHtml}
+        </div>
+      `;
+
+      return `
+        ${favoriteButtonHtml}
+        ${stagesAccordionHtml}
+        ${analysisAccordionHtml}
+        ${aiStyleAccordionHtml}
+        ${editorAccordionHtml}
+      `;
+    }
+
+    // 8-2. プレイ画面 (AIチャット&AI解説 統合、1行結合による文頭空白バグ完全解決)
+    function renderPlayView() {
+      const q = state.currentSessionQueue[state.currentIndexInSession];
+      const percent = Math.round((state.currentIndexInSession / state.totalInSession) * 100);
+      
+      const isFav = q.isFavorite;
+      const progressLabel = `${state.currentIndexInSession + 1} / ${state.totalInSession} 問`;
+
+      const modeBadge = state.activeStage === 'favorite' 
+        ? `<span class="bg-blue-100 text-blue-700 text-xs font-black px-3 py-1 rounded-full border border-blue-200">⭐ お気に入り特訓</span>`
+        : `<span class="bg-sky-100 text-sky-700 text-xs font-black px-3 py-1 rounded-full border border-sky-200">📁 ${state.activeStage}</span>`;
+
+      let parentHtml = '';
+      if (q.parentId) {
+        const parentQ = state.questions.find(item => item.id === q.parentId);
+        if (parentQ) {
+          parentHtml = `
+            <div class="bg-indigo-50 border border-indigo-100 text-indigo-950 rounded-2xl p-3 text-xs text-left mb-4 shadow-inner animate-fade-in">
+              <span class="bg-indigo-100 text-indigo-800 text-[9px] font-black px-1.5 py-0.5 rounded">前提問題 Q${parentQ.id}</span>
+              <p class="mt-1 font-bold leading-relaxed whitespace-pre-wrap">${escapeHtml(parentQ.question)}</p>
+            </div>
+          `;
+        }
+      }
+
+      // 答えを見た後に活性化するAI解説 & 質問エリア
+      let aiSectionHtml = '';
+      if (state.showAnswer) {
+        aiSectionHtml = `
+          <!-- AI解説 -->
+          <div class="mt-4 pt-4 border-t border-sky-100 animate-fade-in">
+            ${state.aiLoading ? `
+              <div class="bg-sky-50 border border-sky-100 rounded-2xl p-4 text-left animate-pulse">
+                <span class="text-xs font-black text-sky-800 flex items-center gap-1.5">🧠 AI解説生成中...</span>
+                <p class="text-xs text-slate-400 font-bold mt-2">あなたのために、解説を考えています。もう少し待っていてください…</p>
+              </div>
+            ` : state.aiExplanation ? `
+              <div class="bg-sky-50 border border-sky-100 rounded-2xl p-4 text-left animate-fade-in shadow-inner">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-base">🧠</span>
+                  <span class="text-xs font-black text-sky-800 tracking-wider">AI仕訳マスター解説</span>
+                  ${!getApiKey() ? `<span class="bg-sky-200/50 text-sky-800 text-[8px] font-bold px-1.5 py-0.5 rounded ml-auto">体験モック動作中</span>` : ''}
+                </div>
+                <p class="text-xs text-slate-700 font-bold leading-relaxed whitespace-pre-wrap">${escapeHtml(state.aiExplanation)}</p>
+              </div>
+            ` : `
+              <button onclick="generateAIExplanation(state.currentSessionQueue[state.currentIndexInSession])" 
+                class="btn-bubbly w-full py-2 px-4 rounded-xl text-xs font-black text-sky-700 bg-sky-50 border border-sky-200 hover:bg-sky-100 transition-colors flex items-center justify-center gap-1">
+                🧠 ✨ AI仕訳解説を生成する
+              </button>
+            `}
+          </div>
+
+          <!-- AIなんでも質問チャット -->
+          <div class="mt-4 bg-[#EDF2F7] border border-slate-200 rounded-2xl p-4 text-left animate-fade-in shadow-inner">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-base">💬</span>
+              <span class="text-xs font-black text-slate-700 tracking-wider">AIなんでも仕訳チャット</span>
+            </div>
+            
+            <!-- チャットログ -->
+            <div id="chat-log-container" class="space-y-3 max-h-[160px] overflow-y-auto mb-3 pr-1 text-[11px]">
+              <div class="flex flex-col items-start">
+                <span class="text-[9px] text-slate-400 font-bold mb-0.5">AI先生</span>
+                <div class="p-2.5 rounded-2xl bg-white text-slate-800 rounded-tl-none border border-slate-100 shadow-sm font-bold leading-relaxed animate-fade-in">
+                  解説を読んでもわからないところがあれば何でも聞いてね！何回でも分かりやすく教えるからね🌸
+                </div>
+              </div>
+
+              ${state.chatHistory.map(h => `
+                <div class="flex flex-col ${h.role === 'user' ? 'items-end' : 'items-start'}">
+                  <span class="text-[9px] text-slate-400 font-bold mb-0.5">${h.role === 'user' ? 'あなた' : 'AI先生'}</span>
+                  <div class="p-2.5 rounded-2xl max-w-[85%] leading-relaxed font-bold animate-fade-in
+                    ${h.role === 'user' ? 'bg-[#3498DB] text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 shadow-sm'}">
+                    ${escapeHtml(h.text)}
+                  </div>
+                </div>
+              `).join('')}
+              
+              ${state.chatLoading ? `
+                <div class="flex flex-col items-start animate-pulse">
+                  <span class="text-[9px] text-slate-400 font-bold mb-0.5">AI先生思考中...</span>
+                  <div class="p-2.5 rounded-2xl bg-white text-slate-400 rounded-tl-none border border-slate-100 shadow-sm font-bold">
+                    分かりやすい回答を作成中です。お待ちくださいね。
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- チャット入力 -->
+            <div class="flex gap-2">
+              <input id="chat-input" type="text" placeholder="AIに質問する... (例: なぜ売掛金は左側？)" 
+                class="flex-1 bg-white border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none focus:border-[#3498DB] transition-all"
+                onkeydown="if(event.key === 'Enter') sendChatMessage(state.currentSessionQueue[state.currentIndexInSession], 'chat-input')">
+              <button onclick="sendChatMessage(state.currentSessionQueue[state.currentIndexInSession], 'chat-input')" 
+                class="bg-[#3498DB] hover:bg-[#2980B9] text-white text-xs font-black px-3 py-2 rounded-xl shadow-sm transition-colors">
+                送信
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <!-- 固定戻るヘッダー -->
+        <div class="flex items-center justify-between mb-3">
+          <button onclick="goBackToSelect()" class="bg-white hover:bg-slate-50 text-slate-600 font-bold py-1.5 px-3.5 rounded-2xl text-[11px] border-2 border-sky-100 shadow-sm flex items-center gap-1.5 transition-colors">
+            ◀ 一覧に戻る
+          </button>
+          
+          <div class="flex items-center gap-1.5 text-xs font-black">
+            <span class="text-sky-400 font-bold font-mono">周回数:</span>
+            <span class="bg-[#D6EAF8] text-sky-950 px-2.5 py-0.5 rounded-full font-mono border border-sky-300 shadow-sm">${state.roundCount}周目</span>
+          </div>
+        </div>
+
+        <!-- 周回進捗インジケーター -->
+        <div class="bg-white rounded-3xl p-3 border-2 border-sky-100 shadow-sm mb-4 flex flex-col gap-2">
+          <div class="flex justify-between items-center text-[11px] font-bold text-slate-500">
+            <span class="flex items-center gap-2">
+              <span class="text-sky-600">⭕ 楽勝: ${state.sessionCorrectCount}</span>
+              <span class="text-orange-500">❌ ムズい: ${state.sessionWrongCount}</span>
+            </span>
+            <span class="font-mono text-slate-700 font-black">${progressLabel}</span>
+          </div>
+          
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+            <div class="bg-gradient-to-r from-sky-400 to-sky-500 h-full rounded-full transition-all duration-300" style="width: ${percent}%"></div>
+          </div>
+        </div>
+
+        <!-- メイン問題カード (h3の改行を1行に結合し、字下げバグを完全に解決) -->
+        <div class="bg-white rounded-3xl p-5 border-2 border-sky-100 shadow-[0_6px_0_#9DC6E4] mb-4 relative">
+          <div class="flex justify-between items-center mb-4">
+            ${modeBadge}
+            <button onclick="toggleFavorite(${q.id})" class="text-2xl focus:outline-none transition-transform active:scale-[1.35] py-0.5 px-2">
+              ${isFav ? '⭐' : '☆'}
+            </button>
+          </div>
+
+          ${parentHtml}
+
+          <!-- 問題テキスト (改行トリミング済、完全左揃え) -->
+          <div class="text-left py-3 min-h-[85px] flex flex-col justify-center">
+            <span class="text-[10px] font-black tracking-widest text-sky-400 uppercase mb-1">QUESTION</span>
+            <h3 class="text-sm font-black text-slate-800 leading-relaxed whitespace-pre-wrap px-0.5">${escapeHtml(q.question)}</h3>
+          </div>
+
+          <!-- ヒント機能 -->
+          ${q.hint ? `
+            <div class="border-t border-dashed border-sky-100 pt-3 mt-1 text-center">
+              ${state.showHint ? `
+                <div class="bg-sky-50/50 border border-sky-100 rounded-2xl p-3 text-xs font-bold text-slate-600 leading-relaxed animate-fade-in text-left">
+                  <span class="text-sky-500">💡 ヒント:</span> ${escapeHtml(q.hint)}
+                </div>
+              ` : `
+                <button onclick="state.showHint = true; render();" class="text-[11px] font-bold text-sky-500 hover:text-sky-600 bg-sky-50 py-1 px-3 rounded-full transition-colors inline-flex items-center gap-1">
+                  💡 ヒントを見る
+                </button>
+              `}
+            </div>
+          ` : ''}
+
+          <!-- 答え展開エリア -->
+          ${state.showAnswer ? `
+            <div class="mt-4 pt-4 border-t-2 border-dashed border-sky-100 text-center animate-fade-in">
+              <span class="text-[10px] font-black tracking-widest text-sky-500 uppercase block mb-2">ANSWER (仕訳)</span>
+              
+              <div class="bg-[#EBF5FB] text-sky-950 border-2 border-sky-200 p-3.5 rounded-2xl inline-block w-full text-left shadow-inner">
+                <p class="text-sm font-black leading-relaxed whitespace-pre-wrap font-mono">${escapeHtml(q.answer)}</p>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- AI解説＆質問チャットセクション -->
+          ${aiSectionHtml}
+        </div>
+
+        <!-- アクションボタンエリア -->
+        <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-8">
+          ${!state.showAnswer ? `
+            <!-- 答えを見るボタン (記憶定着コバルトブルー) -->
+            <button onclick="toggleAnswer()" class="btn-bubbly w-full bg-[#3498DB] hover:bg-[#2980B9] text-white font-black text-base py-3.5 rounded-3xl border-b-[6px] border-[#2471A3] shadow-md tracking-wider">
+              答えを見る 👀
+            </button>
+          ` : `
+            <!-- 2. 答え確認後の二択ボタン -->
+            <div class="grid grid-cols-2 gap-3">
+              <button onclick="pressHard()" class="btn-bubbly bg-[#FFD1A9] text-amber-950 font-black text-xs py-3 rounded-3xl border-b-[6px] border-amber-400 shadow-md flex flex-col items-center justify-center gap-1">
+                <span class="text-lg">😵‍💫</span>
+                <span>ムズすぎワロタ</span>
+              </button>
+              
+              <button onclick="pressEasy()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-xs py-3 rounded-3xl border-b-[6px] border-emerald-400 shadow-md flex flex-col items-center justify-center gap-1">
+                <span class="text-lg">😎</span>
+                <span>楽勝！</span>
+              </button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // 8-3. リザルト画面
+    function renderResultView() {
+      const stats = state.activeStage === 'favorite' ? getFavoriteStats() : getStageStats(state.activeStage);
+      const isPerfect = stats.remaining === 0;
+
+      return `
+        <div class="text-center mb-6">
+          <div class="inline-block bg-[#D6EAF8] text-sky-950 text-xs font-black px-4 py-1.5 rounded-full border border-sky-300 shadow-sm uppercase tracking-widest mb-2 font-mono">
+            Round ${state.roundCount} Finished
+          </div>
+          <h2 class="text-3xl font-black text-slate-800 tracking-tight">
+            ${state.roundCount}周目 終了！
+          </h2>
+        </div>
+
+        <div class="bg-white rounded-3xl p-6 border-2 border-sky-100 shadow-[0_8px_0_#9DC6E4] mb-6 text-center animate-fade-in">
+          <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">今回のラウンド成果</span>
+          
+          <div class="grid grid-cols-2 gap-4 my-5">
+            <div class="bg-[#EBF5FB] border border-sky-100 p-4 rounded-2xl shadow-inner animate-fade-in">
+              <div class="text-2xl mb-1">😎</div>
+              <div class="text-xs text-sky-500 font-bold">楽勝認定</div>
+              <div class="text-2xl font-black text-sky-600 font-mono mt-0.5">${state.sessionCorrectCount}問</div>
+            </div>
+            
+            <div class="bg-orange-50 border border-orange-100 p-4 rounded-2xl shadow-inner animate-fade-in">
+              <div class="text-2xl mb-1">😵‍💫</div>
+              <div class="text-xs text-slate-500 font-bold">繰り越し</div>
+              <div class="text-2xl font-black text-orange-500 font-mono mt-0.5">${state.sessionWrongCount}問</div>
+            </div>
+          </div>
+
+          <div class="border-t border-sky-100 pt-5 mt-2 animate-fade-in">
+            <p class="text-xs font-bold text-sky-400 uppercase tracking-wider mb-2">ステージ未クリア残数</p>
+            
+            ${isPerfect ? `
+              <div class="inline-block bg-sky-100 text-sky-800 border border-sky-200 rounded-2xl px-6 py-4 mt-1">
+                <span class="text-4xl block mb-2">🎉🌸🏆</span>
+                <p class="text-base font-black">ステージ完全クリア！！！</p>
+                <p class="text-xs font-bold text-sky-700/80 mt-1 leading-relaxed">
+                  素晴らしいです！<br>このステージを完全にマスターしました！
+                </p>
+              </div>
+            ` : `
+              <div class="flex flex-col items-center justify-center animate-fade-in">
+                <span class="text-sm font-bold text-slate-500 flex items-center gap-1.5">
+                  未だ「楽勝」になっていない問題:
+                  <strong class="text-xl font-black text-slate-800 font-mono bg-sky-50 px-3 py-1 rounded-xl border border-sky-200">${stats.remaining}問</strong>
+                </span>
+                <p class="text-xs font-bold text-sky-400 mt-2 leading-relaxed">
+                  ※クリアされなかった「ムズすぎ」問題だけが、同じ周目の残り問題として引き継がれます。
+                </p>
+              </div>
+            `}
+          </div>
+        </div>
+
+        <div id="answer-action-area" class="flex flex-col gap-3 scroll-mt-6">
+          ${!isPerfect ? `
+            <button onclick="startSession('${state.activeStage}', true);" 
+              class="btn-bubbly w-full bg-[#5EF2D3] text-emerald-950 font-black text-lg py-[1.125rem] rounded-3xl border-b-[6px] border-emerald-400 shadow-md tracking-wider">
+              残り ${stats.remaining}問を続ける 🚀
+            </button>
+            
+            <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-slate-50 hover:bg-slate-100 text-slate-600 font-black py-[1.125rem] rounded-3xl border border-slate-300 shadow-sm text-center">
+              ステージ選択へ戻る 🏠
+            </button>
+          ` : `
+            <button onclick="goBackToSelect()" class="btn-bubbly w-full bg-[#FFF176] text-amber-950 font-black text-lg py-[1.125rem] rounded-3xl border-b-[6px] border-amber-400 shadow-md tracking-wider text-center">
+              ステージ選択へ戻る 🏠
+            </button>
+          `}
+        </div>
+      `;
+    }
+
+    // --- 8. ユーティリティ & XSS 対策 ---
+    function showModal(title, body, showOk = false, onOk = null) {
+      const modal = document.getElementById('custom-modal');
+      const iconEl = document.getElementById('modal-icon');
+      const titleEl = document.getElementById('modal-title');
+      const bodyEl = document.getElementById('modal-body');
+      const cancelBtn = document.getElementById('modal-btn-cancel');
+      const okBtn = document.getElementById('modal-btn-ok');
+
+      // モーダル部品が見つからない環境でもアプリ全体を止めないための保険
+      if (!modal || !titleEl || !bodyEl || !cancelBtn || !okBtn) {
+        alert(`${title}
+
+${body}`);
+        if (showOk && typeof onOk === 'function') onOk();
+        return;
+      }
+
+      titleEl.textContent = title;
+      bodyEl.textContent = body;
+      if (iconEl) iconEl.textContent = showOk ? '⚠️' : '🌸';
+
+      okBtn.classList.toggle('hidden', !showOk);
+      cancelBtn.textContent = showOk ? 'キャンセル' : '閉じる';
+
+      cancelBtn.onclick = () => {
+        modal.classList.add('hidden');
+      };
+
+      okBtn.onclick = () => {
+        modal.classList.add('hidden');
+        if (typeof onOk === 'function') onOk();
+      };
+
+      modal.onclick = (event) => {
+        if (event.target === modal) {
+          modal.classList.add('hidden');
+        }
+      };
+
+      modal.classList.remove('hidden');
+    }
+
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return '';
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // --- 9. 初期起動処理 ---
+    // window.onload だけに頼ると、プレビュー環境で外部フォント/CDNの読み込み待ちになり、
+    // app-root が空のままになることがあります。
+    // そのため DOM の準備ができた時点で即起動し、load イベントと setTimeout でも保険をかけます。
+    let __sakuraBokiAppStarted = false;
+
+    function bootApp() {
+      if (__sakuraBokiAppStarted) return;
+      __sakuraBokiAppStarted = true;
+
+      try {
+        loadProgress();
+        render();
+      } catch (e) {
+        console.error('アプリ起動時エラー:', e);
+        const root = document.getElementById('app-root');
+        if (root) {
+          root.innerHTML = `
+            <div class="bg-white border-2 border-rose-200 rounded-3xl p-5 shadow-md text-center">
+              <div class="text-3xl mb-2">⚠️</div>
+              <h2 class="font-black text-rose-600 text-lg mb-2">アプリの起動に失敗しました</h2>
+              <p class="text-xs text-slate-600 leading-relaxed">
+                保存データまたは実行環境の影響で初期表示に失敗しています。<br>
+                ブラウザの再読み込み、または保存データの削除を試してください。
+              </p>
+            </div>
+          `;
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootApp, { once: true });
+    } else {
+      bootApp();
+    }
+
+    window.addEventListener('load', bootApp, { once: true });
+    setTimeout(bootApp, 0);
+
+  </script>
+</body>
+</html>
