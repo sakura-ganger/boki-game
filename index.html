@@ -1410,44 +1410,40 @@ function toggleAnswer() {
           ` : ''}
 
           <!-- 答え展開エリア -->
-          ${state.showAnswer ? `
-            <div class="mt-4 pt-4 border-t-2 border-dashed border-sky-100 text-center animate-fade-in">
-              <span class="text-[10px] font-black tracking-widest text-sky-500 uppercase block mb-2">ANSWER (仕訳)</span>
-              
-              <div class="bg-[#EBF5FB] text-sky-950 border-2 border-sky-200 p-3.5 rounded-2xl inline-block w-full text-left shadow-inner">
-                <p class="text-sm font-black leading-relaxed whitespace-pre-wrap font-mono">${escapeHtml(q.answer)}</p>
-              </div>
-            </div>
-          ` : ''}
+      ${state.showAnswer ? `
+  <div class="mt-4 pt-4 border-t-2 border-dashed border-sky-100 text-center animate-fade-in">
+    <span class="text-[10px] font-black tracking-widest text-sky-500 uppercase block mb-2">ANSWER (仕訳)</span>
+    
+    <div class="bg-[#EBF5FB] text-sky-950 border-2 border-sky-200 p-3.5 rounded-2xl inline-block w-full text-left shadow-inner">
+      <p class="text-sm font-black leading-relaxed whitespace-pre-wrap font-mono">${escapeHtml(q.answer)}</p>
+    </div>
+
+    <div id="answer-choice-area" class="grid grid-cols-2 gap-3 mt-4">
+      <button onclick="pressHard()" class="btn-bubbly bg-[#FFD1A9] text-amber-950 font-black text-xs py-3 rounded-3xl border-b-6 border-amber-400 shadow-md flex flex-col items-center justify-center gap-1">
+        <span class="text-lg">😵‍💫</span>
+        <span>ムズすぎワロタ</span>
+      </button>
+      
+      <button onclick="pressEasy()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-xs py-3 rounded-3xl border-b-6 border-emerald-400 shadow-md flex flex-col items-center justify-center gap-1">
+        <span class="text-lg">😎</span>
+        <span>楽勝！</span>
+      </button>
+    </div>
+  </div>
+` : ''}
 
           <!-- AI解説＆質問チャットセクション -->
           ${aiSectionHtml}
         </div>
 
         <!-- アクションボタンエリア -->
-        <div class="flex flex-col gap-3">
-          ${!state.showAnswer ? `
-            <!-- 答えを見るボタン (記憶定着コバルトブルー) -->
-            <button onclick="toggleAnswer()" class="btn-bubbly w-full bg-[#3498DB] hover:bg-[#2980B9] text-white font-black text-base py-3.5 rounded-3xl border-b-6 border-[#2471A3] shadow-md tracking-wider">
-              答えを見る 👀
-            </button>
-          ` : `
-            <!-- 2. 答え確認後の二択ボタン -->
-            <div class="grid grid-cols-2 gap-3">
-              <button onclick="pressHard()" class="btn-bubbly bg-[#FFD1A9] text-amber-950 font-black text-xs py-3 rounded-3xl border-b-6 border-amber-400 shadow-md flex flex-col items-center justify-center gap-1">
-                <span class="text-lg">😵‍💫</span>
-                <span>ムズすぎワロタ</span>
-              </button>
-              
-              <button onclick="pressEasy()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-xs py-3 rounded-3xl border-b-6 border-emerald-400 shadow-md flex flex-col items-center justify-center gap-1">
-                <span class="text-lg">😎</span>
-                <span>楽勝！</span>
-              </button>
-            </div>
-          `}
-        </div>
-      `;
-    }
+        ${!state.showAnswer ? `
+  <div class="flex flex-col gap-3">
+    <button onclick="toggleAnswer()" class="btn-bubbly w-full bg-[#3498DB] hover:bg-[#2980B9] text-white font-black text-base py-3.5 rounded-3xl border-b-6 border-[#2471A3] shadow-md tracking-wider">
+      答えを見る 👀
+    </button>
+  </div>
+` : ''}
 
     // 8-3. リザルト画面
     function renderResultView() {
