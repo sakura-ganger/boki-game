@@ -256,14 +256,15 @@
       aiLoading: false,       // 解説生成中フラグ
       similarQuestions: "",   // Geminiが生成した例題
       similarLoading: false,  // 例題生成中フラグ
-      chatOpened: false,      // AIチャット欄の開閉状態
-      chatHistory: [],        // チャットログの配列 [{role: 'user'|'model', text: string}]
-      chatLoading: false      // チャット返答待ちフラグ
+      geminiBusy: false,     // Gemini API同時実行防止
+      geminiLastStatus: "", // Gemini APIの直近ステータス表示
     };
 
     // --- 3. localStorage との進捗マージ (プレビュー環境のサンドボックス制限に完全対応) ---
     const STORAGE_KEY = 'sakura_boki3_progress_v2'; // V2に変更
     const ROUND_STORAGE_KEY = 'sakura_boki3_rounds_v1';
+    const SIMILAR_CACHE_KEY = 'sakura_boki_similar_cache_v1';
+    const GEMINI_MODEL_KEY = 'sakura_boki_gemini_model_v1';
     
     let isLocalStorageAvailable = true;
     try {
@@ -534,33 +535,125 @@ ${styleText}
     // --- 5. Gemini API 呼び出し (体験モックモード機能付き) ---
     // APIキーを入力して保存すれば、本物のAIが動作。未入力なら賢いモックが動作！
     
-    // APIキーを取得 (ユーザー入力値 or 自動付与)
+    // API接続最優先のGemini設定・診断ヘルパー
+    function normalizeApiKey(value) {
+      let cleaned = String(value || '')
+        .trim()
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/^['"]|['"]$/g, '')
+        .replace(/\s+/g, '');
+
+      // URLや「key=xxxx」を丸ごと貼った場合でも、APIキーらしい部分だけ拾う
+      const match = cleaned.match(/AIza[0-9A-Za-z_\-]{20,}/);
+      if (match) cleaned = match[0];
+      return cleaned;
+    }
+
     function getApiKey() {
-      const rawKey = getStorageItem('sakura_boki_api_key') || "";
-      // コピペ時に混ざりやすい空白・改行・引用符を軽く除去する
-      return String(rawKey).trim().replace(/^['"]|['"]$/g, '').trim();
+      return normalizeApiKey(getStorageItem('sakura_boki_api_key') || '');
+    }
+
+    function getGeminiModelPreference() {
+      return getStorageItem(GEMINI_MODEL_KEY) || 'auto';
+    }
+
+    function setGeminiModelPreference(modelName) {
+      setStorageItem(GEMINI_MODEL_KEY, modelName || 'auto');
+    }
+
+    function getGeminiModelCandidates() {
+      const pref = getGeminiModelPreference();
+      const stableFallbacks = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+      if (pref && pref !== 'auto') return [pref, ...stableFallbacks.filter(m => m !== pref)];
+      // 接続優先：2.0 Flash → 1.5 Flash の順で試す。2.5系が環境で弾かれる場合に強い。
+      return ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
     }
 
     function getGeminiErrorAdvice(error) {
       const message = String(error?.message || error || '');
       const lower = message.toLowerCase();
 
-      if (message.includes('API_KEY_INVALID') || message.includes('API key not valid') || message.includes('API key not valid.') || message.includes('HTTP 400')) {
-        return '原因候補：保存済みのGemini APIキーが無効、またはコピペ時に余計な文字が混ざっています。AIパートナー設定からAPIキーを削除し、正しいキーを保存し直してください。';
+      if (message.includes('API_KEY_INVALID') || message.includes('API key not valid') || message.includes('HTTP 400')) {
+        return `原因候補：APIキーの文字列ミス、モデル指定、またはリクエスト形式の問題です。\n\n詳細：${message.slice(0, 500)}`;
       }
       if (message.includes('PERMISSION_DENIED') || message.includes('HTTP 403') || lower.includes('referer') || lower.includes('referrer')) {
-        return '原因候補：APIキーの利用制限で、このGitHub PagesのURLからの使用が許可されていません。Google AI Studio側でHTTPリファラー制限を見直すか、制限なしのテスト用キーで確認してください。';
+        return `原因候補：APIキーの利用制限です。GitHub PagesのURLが許可されていない、Gemini APIが有効でない、またはキーがブロックされています。\n\n詳細：${message.slice(0, 500)}`;
+      }
+      if (message.includes('MAX_TOKENS')) {
+        return `原因候補：API利用上限ではなく、1回の返答に使える出力トークン上限に当たり、Geminiが文章を返せなかった状態です。v8では出力上限を増やし、2.5系で失敗した場合は2.0 Flashへ自動で切り替えます。\n\n詳細：${message.slice(0, 500)}`;
       }
       if (message.includes('RESOURCE_EXHAUSTED') || message.includes('HTTP 429') || lower.includes('quota')) {
-        return '原因候補：Gemini APIの利用上限、または短時間の連続利用制限に達しています。少し待ってから再試行してください。';
+        return `原因候補：1分あたりの回数制限、トークン制限、または日次上限です。少し待ってから再試行してください。\n\n詳細：${message.slice(0, 500)}`;
       }
       if (message.includes('HTTP 404') || lower.includes('not found')) {
-        return '原因候補：指定しているGeminiモデルが利用できない状態です。モデル名やAPIの利用可能状況を確認してください。';
+        return `原因候補：指定モデルがこのAPIキー・プロジェクトで利用できません。v7では別モデルへ自動切替を試します。\n\n詳細：${message.slice(0, 500)}`;
       }
-      if (message.includes('Failed to fetch') || lower.includes('networkerror') || lower.includes('network')) {
-        return '原因候補：通信環境、ブラウザ制限、拡張機能、またはプレビュー環境の制限でGemini APIへ接続できていません。Chrome/EdgeでGitHub Pagesを開いて再確認してください。';
+      if (message.includes('Failed to fetch') || lower.includes('networkerror') || lower.includes('network') || lower.includes('abort')) {
+        return `原因候補：通信環境、ブラウザ制限、広告ブロッカー、GitHub Pages以外のプレビュー制限、またはタイムアウトです。Chrome/Edgeで公開URLから再確認してください。\n\n詳細：${message.slice(0, 500)}`;
       }
-      return '原因候補：Gemini APIとの通信に失敗しました。APIキー、利用上限、ブラウザ環境を確認してください。';
+      return `原因候補：Gemini APIとの通信に失敗しました。\n\n詳細：${message.slice(0, 500)}`;
+    }
+
+    function setGeminiStatus(message) {
+      state.geminiLastStatus = message || '';
+    }
+
+    function buildGeminiRequestText(systemPrompt, userQuery) {
+      // 接続優先のため system_instruction ではなく、通常の1メッセージにまとめる。
+      // REST環境差で system_instruction が原因の失敗になる可能性を下げる。
+      return `【システム指示】\n${systemPrompt}\n\n【ユーザー依頼】\n${userQuery}`;
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 22000) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    function shouldTryNextGeminiModel(error) {
+      const msg = String(error?.message || error || '').toLowerCase();
+      // MAX_TOKENS はAPI上限ではなく、出力トークン上限で応答が空になった状態。
+      // 2.5系で起きやすいため、接続優先で次の安定モデルへ逃がす。
+      return msg.includes('http 400') || msg.includes('http 404') || msg.includes('not found') || msg.includes('model') || msg.includes('max_tokens') || msg.includes('no text returned');
+    }
+
+    function getSimilarCacheMap() {
+      const saved = getStorageItem(SIMILAR_CACHE_KEY);
+      try { return saved ? JSON.parse(saved) || {} : {}; } catch (e) { return {}; }
+    }
+
+    function setSimilarCacheMap(map) {
+      setStorageItem(SIMILAR_CACHE_KEY, JSON.stringify(map || {}));
+    }
+
+    function getSimilarCacheKey(q) {
+      const styleKey = getCurrentAIStyleKey();
+      const promptSeed = getSimilarQuestionPrompt().slice(0, 120);
+      return `${q.id}__${styleKey}__${promptSeed.length}_${promptSeed}`;
+    }
+
+    function getCachedSimilarQuestions(q) {
+      const cache = getSimilarCacheMap();
+      return cache[getSimilarCacheKey(q)] || '';
+    }
+
+    function setCachedSimilarQuestions(q, text) {
+      const cache = getSimilarCacheMap();
+      cache[getSimilarCacheKey(q)] = text;
+      // localStorage肥大化を避けるため最大50件
+      const entries = Object.entries(cache).slice(-50);
+      setSimilarCacheMap(Object.fromEntries(entries));
+    }
+
+    function clearSimilarQuestionCache() {
+      initAudio();
+      sounds.tap();
+      setSimilarCacheMap({});
+      showModal('例題キャッシュ削除', '保存済みの例題キャッシュを削除しました。次回から再生成できます。');
     }
 
     // 体験用のモック解説ジェネレーター (APIキー未入力時でも抜群に機能！)
@@ -591,68 +684,101 @@ ${styleText}
       }
     }
 
-    async function callGeminiAPI(systemPrompt, userQuery) {
+    async function callGeminiAPI(systemPrompt, userQuery, options = {}) {
       const apiKeyValue = getApiKey();
       if (!apiKeyValue) {
-        // キー未入力時は1秒のローディング演出を入れてモックを返す (Previewでの動作を完全保障！)
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 500));
         const currentStyle = getStorageItem('sakura_boki_ai_style') || 'default';
         return generateMockResponse(state.currentSessionQueue[state.currentIndexInSession].question, state.currentSessionQueue[state.currentIndexInSession].answer, currentStyle);
       }
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKeyValue)}`;
-      
-      const payload = {
-        contents: [
-          {
-            parts: [{ text: userQuery }]
-          }
-        ],
-        system_instruction: {
-          parts: [{ text: systemPrompt }]
-        },
-        generationConfig: {
-          temperature: 0.7,
-          responseMimeType: "text/plain"
-        }
-      };
+      const modelCandidates = options.models || getGeminiModelCandidates();
+      const temperature = typeof options.temperature === 'number' ? options.temperature : 0.35;
+      // 2.5系は短いmaxOutputTokensだと内部思考だけでMAX_TOKENSになり、本文が空になることがある。
+      // 接続優先のため、デフォルトを少し広めにする。
+      const maxOutputTokens = options.maxOutputTokens || 1600;
+      const requestText = buildGeminiRequestText(systemPrompt, userQuery);
 
-      let delay = 1000;
-      for (let i = 0; i < 3; i++) {
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-          });
-          if (!response.ok) {
-            let errorText = "";
-            try {
-              const errorJson = await response.json();
-              errorText = errorJson?.error?.message || JSON.stringify(errorJson);
-            } catch (jsonError) {
-              errorText = await response.text();
-            }
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-          }
-          const data = await response.json();
-          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) return text;
-          const blockReason = data.promptFeedback?.blockReason;
-          if (blockReason) {
-            throw new Error(`Gemini response blocked: ${blockReason}`);
-          }
-          throw new Error("No text returned in response.");
-        } catch (error) {
-          if (i === 2) {
-            throw error; 
-          }
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2; 
+      let lastError = null;
+
+      for (const modelName of modelCandidates) {
+        const generationConfig = {
+          temperature,
+          topP: 0.9,
+          candidateCount: 1,
+          maxOutputTokens
+        };
+        // Gemini 2.5 Flash系はThinking対応。ブラウザ直叩きでは、短い接続テストでも
+        // 思考トークンでMAX_TOKENSになる場合があるため、可能なら思考予算を0に寄せる。
+        if (/gemini-2\.5/i.test(modelName)) {
+          generationConfig.thinkingConfig = { thinkingBudget: 0 };
         }
+
+        const payload = {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: requestText }]
+            }
+          ],
+          generationConfig
+        };
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(apiKeyValue)}`;
+        let delay = 700;
+
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            setGeminiStatus(`Gemini接続中：${modelName} / ${attempt}回目`);
+            const response = await fetchWithTimeout(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            }, options.timeoutMs || 22000);
+
+            const raw = await response.text();
+            let data = {};
+            try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = { raw }; }
+
+            if (!response.ok) {
+              const detail = data?.error?.message || data?.raw || raw || 'No error body';
+              const status = data?.error?.status ? ` ${data.error.status}` : '';
+              throw new Error(`HTTP ${response.status}${status} / model=${modelName}: ${detail}`);
+            }
+
+            const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('\n').trim();
+            if (text) {
+              setGeminiStatus(`接続成功：${modelName}`);
+              return text;
+            }
+
+            const blockReason = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason;
+            const usage = data.usageMetadata ? ` / usage=${JSON.stringify(data.usageMetadata).slice(0, 260)}` : '';
+            const finishMessage = data.candidates?.[0]?.finishMessage ? ` / finishMessage=${data.candidates[0].finishMessage}` : '';
+            throw new Error(`No text returned / model=${modelName} / reason=${blockReason || 'unknown'}${finishMessage}${usage}`);
+          } catch (error) {
+            lastError = error;
+            console.warn('Gemini request failed:', modelName, attempt, error);
+
+            const msg = String(error?.message || error || '');
+            const isRateOrNetwork = msg.includes('HTTP 429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('Failed to fetch') || msg.toLowerCase().includes('network') || msg.toLowerCase().includes('abort');
+            const isPermission = msg.includes('HTTP 403') || msg.includes('PERMISSION_DENIED') || msg.includes('API_KEY_INVALID');
+
+            if (isPermission) {
+              throw error;
+            }
+            if (attempt < 2 && isRateOrNetwork) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+              delay *= 2;
+              continue;
+            }
+            break;
+          }
+        }
+
+        if (lastError && !shouldTryNextGeminiModel(lastError)) break;
       }
+
+      throw lastError || new Error('Gemini API request failed.');
     }
 
     // AI解説生成関数
@@ -667,7 +793,7 @@ ${styleText}
       const userQuery = `問題：${q.question}\n答え（仕訳）：${q.answer}\nヒント：${q.hint || "なし"}\n\nこの仕訳について、なぜその勘定科目になるのか、借方と貸方の配置の理由を含めてキャラクターになりきって優しく教えて。`;
 
       try {
-        const text = await callGeminiAPI(systemPrompt, userQuery);
+        const text = await callGeminiAPI(systemPrompt, userQuery, { maxOutputTokens: 1800, temperature: 0.35 });
         state.aiExplanation = text;
       } catch (e) {
         console.error('Gemini AI explanation error:', e);
@@ -736,16 +862,29 @@ Q3. 応用確認問題です。
     }
 
     // Geminiに現在の問題の例題を作ってもらう
-    async function generateSimilarQuestions(q) {
+    async function generateSimilarQuestions(q, forceRegenerate = false) {
       initAudio();
       sounds.tap();
+      if (state.geminiBusy) {
+        showModal('Gemini処理中', 'AI処理が終わってからもう一度押してください。');
+        return;
+      }
+
+      const cached = getCachedSimilarQuestions(q);
+      if (!forceRegenerate && cached) {
+        state.similarQuestions = cached;
+        render();
+        return;
+      }
+
+      state.geminiBusy = true;
       state.similarLoading = true;
       state.similarQuestions = "";
       render();
 
       try {
         if (!getApiKey()) {
-          await new Promise(resolve => setTimeout(resolve, 800));
+          await new Promise(resolve => setTimeout(resolve, 500));
           state.similarQuestions = cleanSimilarQuestionsOutput(generateMockSimilarQuestions(q));
         } else {
           const systemPrompt = getSimilarQuestionSystemPrompt();
@@ -759,8 +898,9 @@ ${q.answer}
 
 ヒント：
 ${q.hint || "なし"}`;
-          const text = await callGeminiAPI(systemPrompt, userQuery);
+          const text = await callGeminiAPI(systemPrompt, userQuery, { temperature: 0.35, maxOutputTokens: 1800 });
           state.similarQuestions = cleanSimilarQuestionsOutput(text);
+          setCachedSimilarQuestions(q, state.similarQuestions);
         }
       } catch (e) {
         console.error('Gemini similar question error:', e);
@@ -772,65 +912,10 @@ Gemini通信に失敗したため、体験用の例題を表示します。
 ${fallback}`;
       } finally {
         state.similarLoading = false;
+        state.geminiBusy = false;
         render();
       }
     }
-
-    function toggleChatPanel() {
-      initAudio();
-      sounds.tap();
-      state.chatOpened = !state.chatOpened;
-      render();
-      if (state.chatOpened) scrollChatToBottom();
-    }
-
-    // AI質問チャット送信関数
-    async function sendChatMessage(q, inputId) {
-      initAudio();
-      sounds.tap();
-      const inputEl = document.getElementById(inputId);
-      if (!inputEl) return;
-      const userMsg = inputEl.value.trim();
-      if (!userMsg) return;
-
-      state.chatOpened = true;
-      state.chatHistory.push({ role: 'user', text: userMsg });
-      state.chatLoading = true;
-      render();
-      scrollChatToBottom();
-
-      const systemPrompt = getAISystemPrompt() + "\n学習者から質問を受けました。設定されたキャラクターと口調を完全に崩さずに、最高にわかりやすく答えてください。";
-      
-      let conversationContext = `問題：${q.question}\n答え（仕訳）：${q.answer}\n\n`;
-      state.chatHistory.forEach(h => {
-        conversationContext += `${h.role === 'user' ? '生徒' : '講師'}: ${h.text}\n`;
-      });
-      conversationContext += "\nこれに対する最適な回答を学習者に向けて作成してください。";
-
-      try {
-        const reply = await callGeminiAPI(systemPrompt, conversationContext);
-        state.chatHistory.push({ role: 'model', text: reply });
-      } catch (e) {
-        console.error('Gemini chat error:', e);
-        state.chatHistory.push({ role: 'model', text: `${getGeminiErrorAdvice(e)}
-
-APIキーを削除すると、体験モックモードで動作確認できます。` });
-      } finally {
-        state.chatLoading = false;
-        render();
-        scrollChatToBottom();
-      }
-    }
-
-    function scrollChatToBottom() {
-      setTimeout(() => {
-        const container = document.getElementById('chat-log-container');
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
-      }, 50);
-    }
-
 
     function showModal(title, body, showOk = false, onOk = null) {
       const modal = document.getElementById('custom-modal');
@@ -980,7 +1065,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
       sounds.tap();
       const inputEl = document.getElementById(inputId);
       if (inputEl) {
-        const cleanedKey = String(inputEl.value || '').trim().replace(/^['"]|['"]$/g, '').trim();
+        const cleanedKey = normalizeApiKey(inputEl.value || '');
         setStorageItem('sakura_boki_api_key', cleanedKey);
         showModal("APIキー設定", cleanedKey ? "Gemini APIキーをこのブラウザに保存しました。次に『API接続テスト』で有効か確認してください。" : "APIキーを空で保存しました。体験モック解説モードで動作します。");
         render();
@@ -995,6 +1080,16 @@ APIキーを削除すると、体験モックモードで動作確認できま�
       render();
     }
 
+    function saveGeminiModelPreference(inputId) {
+      initAudio();
+      sounds.tap();
+      const inputEl = document.getElementById(inputId);
+      const value = inputEl ? inputEl.value : 'auto';
+      setGeminiModelPreference(value);
+      showModal('モデル設定', value === 'auto' ? '自動切替に設定しました。接続優先で複数モデルを順番に試します。' : `${value} を優先モデルに設定しました。`);
+      render();
+    }
+
     async function testUserApiKey() {
       initAudio();
       sounds.tap();
@@ -1002,12 +1097,24 @@ APIキーを削除すると、体験モックモードで動作確認できま�
         showModal("APIキー未入力", "Gemini APIキーが保存されていません。キーを保存するか、未入力のまま体験モック解説モードで使ってください。");
         return;
       }
+      if (state.geminiBusy) {
+        showModal('Gemini処理中', 'AI処理が終わってから接続テストしてください。');
+        return;
+      }
+      state.geminiBusy = true;
+      setGeminiStatus('接続テスト中...');
+      render();
       try {
-        const reply = await callGeminiAPI("あなたは接続テスト用AIです。", "日本語で OK とだけ返してください。");
-        showModal("接続成功", `Gemini APIに接続できました。返答：${reply.slice(0, 40)}`);
+        const reply = await callGeminiAPI("接続テストです。余計な説明は不要です。", "OK とだけ返してください。", { temperature: 0, maxOutputTokens: 128, timeoutMs: 18000 });
+        showModal("接続成功", `Gemini APIに接続できました。
+${state.geminiLastStatus}
+返答：${reply.slice(0, 40)}`);
       } catch (e) {
         console.error('Gemini API key test error:', e);
         showModal("接続失敗", getGeminiErrorAdvice(e));
+      } finally {
+        state.geminiBusy = false;
+        render();
       }
     }
 
@@ -1065,9 +1172,6 @@ APIキーを削除すると、体験モックモードで動作確認できま�
       state.aiLoading = false;
       state.similarQuestions = "";
       state.similarLoading = false;
-      state.chatOpened = false;
-      state.chatHistory = [];
-      state.chatLoading = false;
       state.view = 'play';
       
       sounds.tap();
@@ -1118,9 +1222,6 @@ APIキーを削除すると、体験モックモードで動作確認できま�
       state.aiLoading = false;
       state.similarQuestions = "";
       state.similarLoading = false;
-      state.chatOpened = false;
-      state.chatHistory = [];
-      state.chatLoading = false;
       
       if (state.currentIndexInSession >= state.totalInSession) {
         const stats = state.activeStage === 'favorite' ? getFavoriteStats() : getStageStats(state.activeStage);
@@ -1401,7 +1502,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
 
         aiStyleHtml = `
           <div class="p-4 bg-sky-50/50 rounded-b-2xl border-t border-sky-100 space-y-4 text-xs text-left animate-fade-in">
-            <p class="font-bold text-slate-600">解説を生成・チャットするAIの性格を選べます。下の欄で5パターンすべてのプロンプトを編集できます。</p>
+            <p class="font-bold text-slate-600">解説を生成するAIの性格を選べます。下の欄で5パターンすべてのプロンプトを編集できます。</p>
             
             <div class="space-y-2">
               ${aiStyleOptionsHtml}
@@ -1410,7 +1511,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
             <div class="space-y-3">
               <div>
                 <span class="font-black text-slate-700 block">5パターンのプロンプト編集</span>
-                <p class="text-[10px] text-slate-500 font-bold mt-0.5">保存すると、選択中のAI解説・チャットに反映されます。</p>
+                <p class="text-[10px] text-slate-500 font-bold mt-0.5">保存すると、選択中のAI解説に反映されます。</p>
               </div>
               ${aiPromptEditorsHtml}
             </div>
@@ -1435,7 +1536,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
             <!-- APIキー設定欄 -->
             <div class="bg-[#EBF5FB] p-3 rounded-2xl border border-sky-200 space-y-2 mt-2">
               <span class="font-black text-sky-800 block">🔑 Gemini APIキー設定 (任意)</span>
-              <p class="text-[9px] text-sky-950/60 leading-relaxed font-bold">※キーを入力すると、本物のGeminiがチャットや解説を担当します。未入力時はオフライン用の【体験モック解説モード】で動作します。</p>
+              <p class="text-[9px] text-sky-950/60 leading-relaxed font-bold">※キーを入力すると、本物のGeminiが解説や例題生成を担当します。未入力時はオフライン用の【体験モック解説モード】で動作します。</p>
               <p class="text-[9px] text-sky-700 font-black">現在：${userApiKey ? 'APIキー保存済み（接続テスト推奨）' : 'APIキー未保存（体験モックモード）'}</p>
               <input id="user-gemini-key-input" type="password" placeholder="Gemini APIキーをペースト..." value="${escapeHtml(userApiKey)}"
                 class="w-full bg-white border border-slate-200 rounded-xl p-2 font-bold focus:border-sky-400 outline-none leading-relaxed text-[10px]">
@@ -1449,6 +1550,27 @@ APIキーを削除すると、体験モックモードで動作確認できま�
                 <button onclick="clearUserApiKey()" class="btn-bubbly py-2 bg-white text-rose-600 border border-rose-200 font-black rounded-xl text-center shadow-sm text-[10px]">
                   削除
                 </button>
+              </div>
+              <div class="bg-white rounded-xl border border-sky-100 p-2 space-y-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-[9px] font-black text-sky-900 shrink-0">優先モデル</span>
+                  <select id="gemini-model-select" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold">
+                    <option value="auto" ${getGeminiModelPreference() === 'auto' ? 'selected' : ''}>自動切替（接続優先）</option>
+                    <option value="gemini-2.0-flash" ${getGeminiModelPreference() === 'gemini-2.0-flash' ? 'selected' : ''}>gemini-2.0-flash</option>
+                    <option value="gemini-1.5-flash" ${getGeminiModelPreference() === 'gemini-1.5-flash' ? 'selected' : ''}>gemini-1.5-flash</option>
+                    <option value="gemini-2.5-flash" ${getGeminiModelPreference() === 'gemini-2.5-flash' ? 'selected' : ''}>gemini-2.5-flash</option>
+                  </select>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <button onclick="saveGeminiModelPreference('gemini-model-select')" class="btn-bubbly py-2 bg-white text-sky-700 border border-sky-200 font-black rounded-xl text-center shadow-sm text-[10px]">
+                    モデル保存
+                  </button>
+                  <button onclick="clearSimilarQuestionCache()" class="btn-bubbly py-2 bg-white text-violet-700 border border-violet-200 font-black rounded-xl text-center shadow-sm text-[10px]">
+                    例題キャッシュ削除
+                  </button>
+                </div>
+                <p class="text-[9px] text-slate-500 font-bold leading-relaxed">接続優先のため、v7ではシステム指示を通常本文にまとめて送信します。失敗時はHTTP詳細を表示します。</p>
+                ${state.geminiLastStatus ? `<p class="text-[9px] text-emerald-700 font-black">直近：${escapeHtml(state.geminiLastStatus)}</p>` : ''}
               </div>
             </div>
           </div>
@@ -1542,7 +1664,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
       `;
     }
 
-    // 8-2. プレイ画面 (AIチャット&AI解説 統合、1行結合による文頭空白バグ完全解決)
+    // 8-2. プレイ画面 (AI解説＆例題生成、1行結合による文頭空白バグ完全解決)
     function renderPlayView() {
       const q = state.currentSessionQueue[state.currentIndexInSession];
       const percent = Math.round((state.currentIndexInSession / state.totalInSession) * 100);
@@ -1567,7 +1689,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
         }
       }
 
-      // 答えを見た後に活性化するAI解説・類題生成・質問チャットエリア
+      // 答えを見た後に活性化するAI解説・例題生成エリア
       let aiSectionHtml = '';
       if (state.showAnswer) {
         aiSectionHtml = `
@@ -1621,63 +1743,6 @@ APIキーを削除すると、体験モックモードで動作確認できま�
                 🪄 例題を3問出題してもらう
               </button>
             `}
-          </div>
-
-          <!-- AIなんでも質問チャット（アコーディオン式） -->
-          <div class="mt-2.5 bg-[#EDF2F7] border border-slate-200 rounded-2xl text-left animate-fade-in shadow-inner overflow-hidden">
-            <button onclick="toggleChatPanel()" class="w-full p-3 flex items-center justify-between gap-2 hover:bg-slate-100 transition-colors">
-              <span class="flex items-center gap-2 min-w-0">
-                <span class="text-base">💬</span>
-                <span class="text-xs font-black text-slate-700 tracking-wider">AIなんでも仕訳チャット</span>
-              </span>
-              <span class="text-[10px] font-black text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-full">
-                ${state.chatOpened ? '閉じる ▲' : '使う ▼'}
-              </span>
-            </button>
-
-            ${state.chatOpened ? `
-              <div class="px-3 pb-3 border-t border-slate-200 animate-fade-in">
-                <!-- チャットログ -->
-                <div id="chat-log-container" class="space-y-2 max-h-[120px] overflow-y-auto my-2 pr-1 text-[10px]">
-                  <div class="flex flex-col items-start">
-                    <span class="text-[9px] text-slate-400 font-bold mb-0.5">AI先生</span>
-                    <div class="p-2.5 rounded-2xl bg-white text-slate-800 rounded-tl-none border border-slate-100 shadow-sm font-bold leading-relaxed animate-fade-in">
-                      解説や類題を読んでもわからないところがあれば、ここを開いて質問してね🌸
-                    </div>
-                  </div>
-
-                  ${state.chatHistory.map(h => `
-                    <div class="flex flex-col ${h.role === 'user' ? 'items-end' : 'items-start'}">
-                      <span class="text-[9px] text-slate-400 font-bold mb-0.5">${h.role === 'user' ? 'あなた' : 'AI先生'}</span>
-                      <div class="p-2.5 rounded-2xl max-w-[85%] leading-relaxed font-bold animate-fade-in
-                        ${h.role === 'user' ? 'bg-[#3498DB] text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100 shadow-sm'}">
-                        ${escapeHtml(h.text)}
-                      </div>
-                    </div>
-                  `).join('')}
-                  
-                  ${state.chatLoading ? `
-                    <div class="flex flex-col items-start animate-pulse">
-                      <span class="text-[9px] text-slate-400 font-bold mb-0.5">AI先生思考中...</span>
-                      <div class="p-2.5 rounded-2xl bg-white text-slate-400 rounded-tl-none border border-slate-100 shadow-sm font-bold">
-                        分かりやすい回答を作成中です。お待ちくださいね。
-                      </div>
-                    </div>
-                  ` : ''}
-                </div>
-
-                <!-- チャット入力 -->
-                <div class="flex gap-2">
-                  <input id="chat-input" type="text" placeholder="AIに質問する... (例: なぜ売掛金は左側？)" 
-                    class="flex-1 bg-white border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none focus:border-[#3498DB] transition-all"
-                    onkeydown="if(event.key === 'Enter') sendChatMessage(state.currentSessionQueue[state.currentIndexInSession], 'chat-input')">
-                  <button onclick="sendChatMessage(state.currentSessionQueue[state.currentIndexInSession], 'chat-input')" 
-                    class="bg-[#3498DB] hover:bg-[#2980B9] text-white text-xs font-black px-3 py-2 rounded-xl shadow-sm transition-colors">
-                    送信
-                  </button>
-                </div>
-              </div>
-            ` : ''}
           </div>
         `;
       }
@@ -1767,7 +1832,7 @@ APIキーを削除すると、体験モックモードで動作確認できま�
             </div>
           ` : ''}
 
-          <!-- AI解説＆質問チャットセクション -->
+          <!-- AI解説＆例題生成セクション -->
           ${aiSectionHtml}
         </div>
 
