@@ -57,6 +57,32 @@
     <!-- アプリ本体コンポーネントの描画マウント先 -->
     <main id="app-root"></main>
 
+    <section class="bg-white rounded-3xl border-2 border-emerald-100 shadow-[0_4px_0_#8BD8C0] mb-8 overflow-hidden">
+      <details>
+        <summary class="bg-emerald-50 px-4 py-3 cursor-pointer select-none list-none">
+          <div class="flex justify-between items-center gap-3">
+            <div>
+              <h4 class="text-sm font-black text-slate-800">セーブデータ同期</h4>
+              <p class="text-[10px] text-emerald-900/70 font-bold mt-0.5">PCとスマホで同じ進捗を使う</p>
+            </div>
+            <span class="text-[10px] font-black text-emerald-800 bg-white border border-emerald-100 rounded-full px-3 py-1 shadow-sm">OPEN</span>
+          </div>
+        </summary>
+
+        <div class="p-4 border-t border-emerald-100">
+          <textarea id="save-sync-code" class="w-full h-28 rounded-2xl border-2 border-emerald-100 bg-emerald-50/40 p-3 text-[11px] font-bold text-slate-700 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="ここにセーブコードが表示されます / 読み込むコードを貼り付けます"></textarea>
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <button onclick="exportSaveCode()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-[11px] py-2.5 rounded-2xl border-b-4 border-emerald-400 shadow-sm">
+              コード作成
+            </button>
+            <button onclick="importSaveCode()" class="btn-bubbly bg-[#3498DB] text-white font-black text-[11px] py-2.5 rounded-2xl border-b-4 border-[#2471A3] shadow-sm">
+              コード読込
+            </button>
+          </div>
+        </div>
+      </details>
+    </section>
+
     <!-- カスタムモーダル (警告やリセット用) -->
     <div id="custom-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
       <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-[0_12px_24px_rgba(0,0,0,0.15)] border-4 border-sky-300 text-center transform scale-95 transition-transform duration-200">
@@ -1934,7 +1960,109 @@ ${state.geminiLastStatus}
         .replace(/'/g, '&#39;');
     }
 
-    // --- 9. 初期起動処理 ---
+    // --- 9. セーブデータ同期 ---
+    function getSaveSyncPayload() {
+      return {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        progress: getStorageItem(STORAGE_KEY) || "{}",
+        rounds: getStorageItem(ROUND_STORAGE_KEY) || "{}"
+      };
+    }
+
+    function encodeSaveSyncPayload(payload) {
+      const json = JSON.stringify(payload);
+      if (window.TextEncoder) {
+        const bytes = new TextEncoder().encode(json);
+        let binary = "";
+        bytes.forEach(byte => binary += String.fromCharCode(byte));
+        return btoa(binary);
+      }
+      return btoa(unescape(encodeURIComponent(json)));
+    }
+
+    function decodeSaveSyncPayload(code) {
+      const cleaned = String(code || "").trim();
+      if (!cleaned) throw new Error("empty sync code");
+      const binary = atob(cleaned);
+      if (window.TextDecoder) {
+        const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+        return JSON.parse(new TextDecoder().decode(bytes));
+      }
+      return JSON.parse(decodeURIComponent(escape(binary)));
+    }
+
+    function safeParseSaveMap(value) {
+      try {
+        return value ? JSON.parse(value) || {} : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function mergeQuestionProgress(localProgress, incomingProgress) {
+      const merged = { ...localProgress };
+      Object.keys(incomingProgress || {}).forEach(id => {
+        const localItem = merged[id] || {};
+        const incomingItem = incomingProgress[id] || {};
+        merged[id] = {
+          isFavorite: Boolean(localItem.isFavorite || incomingItem.isFavorite),
+          isCleared: Boolean(localItem.isCleared || incomingItem.isCleared),
+          wrongCount: Math.max(Number(localItem.wrongCount) || 0, Number(incomingItem.wrongCount) || 0),
+          customQuestion: incomingItem.customQuestion || localItem.customQuestion || null
+        };
+      });
+      return merged;
+    }
+
+    function mergeRoundProgress(localRounds, incomingRounds) {
+      const merged = { ...localRounds };
+      Object.keys(incomingRounds || {}).forEach(stageName => {
+        merged[stageName] = Math.max(Number(merged[stageName]) || 1, Number(incomingRounds[stageName]) || 1);
+      });
+      return merged;
+    }
+
+    function exportSaveCode() {
+      const textarea = document.getElementById("save-sync-code");
+      if (!textarea) return;
+      try {
+        textarea.value = encodeSaveSyncPayload(getSaveSyncPayload());
+        textarea.focus();
+        textarea.select();
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(textarea.value).catch(() => {});
+        }
+        showModal("セーブコード作成", "このコードをもう一方の端末で読み込むと、進捗を合流できます。");
+      } catch (e) {
+        console.error("save export failed", e);
+        showModal("作成エラー", "セーブコードの作成に失敗しました。もう一度お試しください。");
+      }
+    }
+
+    function importSaveCode() {
+      const textarea = document.getElementById("save-sync-code");
+      if (!textarea) return;
+
+      try {
+        const payload = decodeSaveSyncPayload(textarea.value);
+        const localProgress = safeParseSaveMap(getStorageItem(STORAGE_KEY));
+        const incomingProgress = safeParseSaveMap(payload.progress);
+        const localRounds = safeParseSaveMap(getStorageItem(ROUND_STORAGE_KEY));
+        const incomingRounds = safeParseSaveMap(payload.rounds);
+
+        setStorageItem(STORAGE_KEY, JSON.stringify(mergeQuestionProgress(localProgress, incomingProgress)));
+        setStorageItem(ROUND_STORAGE_KEY, JSON.stringify(mergeRoundProgress(localRounds, incomingRounds)));
+        loadProgress();
+        render();
+        showModal("同期完了", "セーブデータを読み込み、今の端末の進捗と合流しました。");
+      } catch (e) {
+        console.error("save import failed", e);
+        showModal("読込エラー", "セーブコードを読み込めませんでした。コードが途中で切れていないか確認してください。");
+      }
+    }
+
+    // --- 10. 初期起動処理 ---
     let __sakuraBokiAppStarted = false;
 
     function bootApp() {
