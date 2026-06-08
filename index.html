@@ -70,10 +70,10 @@
         </summary>
 
         <div class="p-4 border-t border-emerald-100">
-          <textarea id="save-sync-code" class="w-full h-28 rounded-2xl border-2 border-emerald-100 bg-emerald-50/40 p-3 text-[11px] font-bold text-slate-700 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="ここにセーブコードが表示されます / 読み込むコードを貼り付けます"></textarea>
+          <textarea id="save-sync-code" class="w-full h-20 rounded-2xl border-2 border-emerald-100 bg-emerald-50/40 p-3 text-[11px] font-bold text-slate-700 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-emerald-200" placeholder="ここに短いセーブコードが表示されます / 読み込むコードを貼り付けます"></textarea>
           <div class="grid grid-cols-2 gap-2 mt-3">
             <button onclick="exportSaveCode()" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black text-[11px] py-2.5 rounded-2xl border-b-4 border-emerald-400 shadow-sm">
-              コード作成
+              短いコード作成
             </button>
             <button onclick="importSaveCode()" class="btn-bubbly bg-[#3498DB] text-white font-black text-[11px] py-2.5 rounded-2xl border-b-4 border-[#2471A3] shadow-sm">
               コード読込
@@ -1962,34 +1962,86 @@ ${state.geminiLastStatus}
 
     // --- 9. セーブデータ同期 ---
     function getSaveSyncPayload() {
+      const savedProgress = safeParseSaveMap(getStorageItem(STORAGE_KEY));
+      const compactProgress = {};
+
+      Object.keys(savedProgress).forEach(id => {
+        const item = savedProgress[id] || {};
+        const compactItem = {};
+
+        if (item.isFavorite) compactItem.f = 1;
+        if (item.isCleared) compactItem.c = 1;
+        if (Number(item.wrongCount) > 0) compactItem.w = Number(item.wrongCount);
+        if (item.customQuestion) compactItem.q = item.customQuestion;
+
+        if (Object.keys(compactItem).length > 0) {
+          compactProgress[id] = compactItem;
+        }
+      });
+
+      const savedRounds = safeParseSaveMap(getStorageItem(ROUND_STORAGE_KEY));
+      const compactRounds = {};
+      Object.keys(savedRounds).forEach(stageName => {
+        const round = Number(savedRounds[stageName]) || 1;
+        if (round > 1) compactRounds[stageName] = round;
+      });
+
       return {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        progress: getStorageItem(STORAGE_KEY) || "{}",
-        rounds: getStorageItem(ROUND_STORAGE_KEY) || "{}"
+        v: 2,
+        p: compactProgress,
+        r: compactRounds
       };
     }
 
     function encodeSaveSyncPayload(payload) {
       const json = JSON.stringify(payload);
+      let code = "";
       if (window.TextEncoder) {
         const bytes = new TextEncoder().encode(json);
         let binary = "";
         bytes.forEach(byte => binary += String.fromCharCode(byte));
-        return btoa(binary);
+        code = btoa(binary);
+      } else {
+        code = btoa(unescape(encodeURIComponent(json)));
       }
-      return btoa(unescape(encodeURIComponent(json)));
+      return code.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
     }
 
     function decodeSaveSyncPayload(code) {
-      const cleaned = String(code || "").trim();
+      let cleaned = String(code || "").trim().replace(/\s+/g, "");
       if (!cleaned) throw new Error("empty sync code");
+      cleaned = cleaned.replace(/-/g, "+").replace(/_/g, "/");
+      while (cleaned.length % 4) cleaned += "=";
       const binary = atob(cleaned);
       if (window.TextDecoder) {
         const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
         return JSON.parse(new TextDecoder().decode(bytes));
       }
       return JSON.parse(decodeURIComponent(escape(binary)));
+    }
+
+    function normalizeSyncProgress(payload) {
+      if (payload && payload.v === 2) {
+        const progress = {};
+        Object.keys(payload.p || {}).forEach(id => {
+          const item = payload.p[id] || {};
+          progress[id] = {
+            isFavorite: Boolean(item.f),
+            isCleared: Boolean(item.c),
+            wrongCount: Number(item.w) || 0,
+            customQuestion: item.q || null
+          };
+        });
+        return {
+          progress,
+          rounds: payload.r || {}
+        };
+      }
+
+      return {
+        progress: safeParseSaveMap(payload.progress),
+        rounds: safeParseSaveMap(payload.rounds)
+      };
     }
 
     function safeParseSaveMap(value) {
@@ -2032,8 +2084,10 @@ ${state.geminiLastStatus}
         textarea.select();
         if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(textarea.value).catch(() => {});
+        } else {
+          document.execCommand("copy");
         }
-        showModal("セーブコード作成", "このコードをもう一方の端末で読み込むと、進捗を合流できます。");
+        showModal("短いコード作成", "短縮版のセーブコードを作りました。もう一方の端末で読み込むと、進捗を合流できます。");
       } catch (e) {
         console.error("save export failed", e);
         showModal("作成エラー", "セーブコードの作成に失敗しました。もう一度お試しください。");
@@ -2046,10 +2100,11 @@ ${state.geminiLastStatus}
 
       try {
         const payload = decodeSaveSyncPayload(textarea.value);
+        const syncData = normalizeSyncProgress(payload);
         const localProgress = safeParseSaveMap(getStorageItem(STORAGE_KEY));
-        const incomingProgress = safeParseSaveMap(payload.progress);
+        const incomingProgress = syncData.progress;
         const localRounds = safeParseSaveMap(getStorageItem(ROUND_STORAGE_KEY));
-        const incomingRounds = safeParseSaveMap(payload.rounds);
+        const incomingRounds = syncData.rounds;
 
         setStorageItem(STORAGE_KEY, JSON.stringify(mergeQuestionProgress(localProgress, incomingProgress)));
         setStorageItem(ROUND_STORAGE_KEY, JSON.stringify(mergeRoundProgress(localRounds, incomingRounds)));
