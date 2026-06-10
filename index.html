@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -1301,6 +1301,18 @@ ${state.geminiLastStatus}
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    function openQuestionEditor(qId) {
+      initAudio();
+      sounds.tap();
+      const q = state.questions.find(item => item.id === qId);
+      if (!q) return;
+      state.view = 'editor';
+      state.editorActiveStage = q.stage;
+      state.editorDetailOpened = { [qId]: true };
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     function setEditorStage(stageName) {
       initAudio();
       sounds.tap();
@@ -1774,20 +1786,21 @@ ${state.geminiLastStatus}
       const filteredQuestions = state.questions.filter(q => q.stage === state.editorActiveStage);
       const changedCount = filteredQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
 
+      const stageOptionsHtml = stageNames.map(stage => {
+        const stageQuestions = state.questions.filter(q => q.stage === stage);
+        const stageChangedCount = stageQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
+        const label = `${stage}${stageChangedCount ? `（変更 ${stageChangedCount}）` : `（${stageQuestions.length}問）`}`;
+        return `<option value="${escapeHtml(stage)}" ${state.editorActiveStage === stage ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+      }).join('');
+
       const stageTabsHtml = `
-        <div class="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-          ${stageNames.map(stage => {
-            const isActive = state.editorActiveStage === stage;
-            const stageQuestions = state.questions.filter(q => q.stage === stage);
-            const stageChangedCount = stageQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
-            return `
-              <button onclick='setEditorStage(${JSON.stringify(stage)})'
-                class="shrink-0 px-3 py-2 rounded-2xl border-2 text-[11px] font-black shadow-sm ${isActive ? 'bg-emerald-400 text-emerald-950 border-emerald-500' : 'bg-white text-slate-600 border-emerald-100'}">
-                ${stage}
-                ${stageChangedCount ? `<span class="ml-1 bg-white/80 text-emerald-800 px-1.5 py-0.5 rounded-full text-[9px]">${stageChangedCount}</span>` : ''}
-              </button>
-            `;
-          }).join('')}
+        <div class="bg-white rounded-3xl border-2 border-emerald-100 p-3 shadow-sm mb-4">
+          <label for="editor-stage-select" class="text-[11px] font-black text-emerald-800 block mb-2">編集するステージ</label>
+          <select id="editor-stage-select" onchange="setEditorStage(this.value)"
+            class="w-full bg-white border-2 border-emerald-200 rounded-2xl px-3 py-3 text-[16px] font-black text-slate-800 outline-none focus:border-emerald-400">
+            ${stageOptionsHtml}
+          </select>
+          <p class="text-[10px] font-bold text-slate-500 mt-2">選んだステージの問題だけを下に表示します。</p>
         </div>
       `;
 
@@ -2026,6 +2039,10 @@ ${state.geminiLastStatus}
               <div class="bg-[#EBF5FB] text-sky-950 border-2 border-sky-200 p-3 rounded-2xl inline-block w-full text-left shadow-inner">
                 <p class="text-[13px] font-black leading-snug whitespace-pre-wrap font-mono">${escapeHtml(q.answer)}</p>
               </div>
+
+              <button onclick="openQuestionEditor(${q.id})" class="btn-bubbly w-full mt-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-black text-[11px] py-2 rounded-2xl shadow-sm">
+                この問題違うやんけ
+              </button>
             </div>
           ` : ''}
 
@@ -2350,3 +2367,4 @@ ${state.geminiLastStatus}
   </script>
 </body>
 </html>
+
