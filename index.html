@@ -1792,10 +1792,7 @@ ${state.geminiLastStatus}
       const changedCount = filteredQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
 
       const stageOptionsHtml = stageNames.map(stage => {
-        const stageQuestions = state.questions.filter(q => q.stage === stage);
-        const stageChangedCount = stageQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
-        const label = `${stage}${stageChangedCount ? `（変更 ${stageChangedCount}）` : `（${stageQuestions.length}問）`}`;
-        return `<option value="${escapeHtml(stage)}" ${state.editorActiveStage === stage ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+        return `<option value="${escapeHtml(stage)}" ${state.editorActiveStage === stage ? 'selected' : ''}>${escapeHtml(stage)}</option>`;
       }).join('');
 
       const stageTabsHtml = `
