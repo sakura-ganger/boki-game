@@ -253,6 +253,7 @@
       showHint: false, 
       accordionOpened: {}, // トップ画面の大枠アコーディオン開閉状態 ('stages', 'analysis', 'aiStyle', 'editor')
       listDetailOpened: {}, // 問題個別のアコーディオン開閉状態
+      editorDetailOpened: {}, // 編集画面の問題個別アコーディオン開閉状態
       editorActiveStage: '①入門', // 問題編集エリアで現在選ばれているステージ
       // Gemini API用ステート
       aiExplanation: "",      // 生成された解説
@@ -1291,6 +1292,31 @@ ${state.geminiLastStatus}
       render();
     }
 
+    function openEditorView() {
+      initAudio();
+      sounds.tap();
+      state.view = 'editor';
+      state.editorDetailOpened = {};
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function setEditorStage(stageName) {
+      initAudio();
+      sounds.tap();
+      state.editorActiveStage = stageName;
+      state.editorDetailOpened = {};
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleEditorQuestion(qId) {
+      initAudio();
+      sounds.tap();
+      state.editorDetailOpened[qId] = !state.editorDetailOpened[qId];
+      render();
+    }
+
     function resetAllProgress() {
       showModal(
         "完全リセット",
@@ -1331,6 +1357,8 @@ ${state.geminiLastStatus}
         root.innerHTML = renderPlayView();
       } else if (state.view === 'result') {
         root.innerHTML = renderResultView();
+      } else if (state.view === 'editor') {
+        root.innerHTML = renderEditorView();
       }
     }
 
@@ -1387,6 +1415,24 @@ ${state.geminiLastStatus}
             </div>
             <span class="text-xs font-bold font-mono bg-white/30 py-1 px-2.5 rounded-full border border-sky-300 text-white">
               ${favStats.total}問
+            </span>
+          </button>
+        </div>
+      `;
+
+      const editorLaunchHtml = `
+        <div class="mb-4">
+          <button onclick="openEditorView()" 
+            class="btn-bubbly w-full py-3.5 px-5 rounded-3xl flex items-center justify-between transition-all font-black text-slate-800 bg-white border-2 border-emerald-100 border-b-4 border-b-emerald-300 shadow-md hover:bg-emerald-50">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="text-2xl">✏️</span>
+              <div class="text-left min-w-0">
+                <p class="text-sm tracking-tight font-black text-slate-800">問題文・答えを編集</p>
+                <p class="text-[10px] font-bold text-emerald-800/75">大きい専用画面でステージ別にまとめて修正</p>
+              </div>
+            </div>
+            <span class="text-xs font-black text-emerald-700 bg-emerald-50 py-1 px-2.5 rounded-full border border-emerald-100">
+              開く
             </span>
           </button>
         </div>
@@ -1719,8 +1765,99 @@ ${state.geminiLastStatus}
         ${stagesAccordionHtml}
         ${analysisAccordionHtml}
         ${aiStyleAccordionHtml}
-        ${editorAccordionHtml}
+        ${editorLaunchHtml}
         ${saveSyncHtml}
+      `;
+    }
+
+    function renderEditorView() {
+      const filteredQuestions = state.questions.filter(q => q.stage === state.editorActiveStage);
+      const changedCount = filteredQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
+
+      const stageTabsHtml = `
+        <div class="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
+          ${stageNames.map(stage => {
+            const isActive = state.editorActiveStage === stage;
+            const stageQuestions = state.questions.filter(q => q.stage === stage);
+            const stageChangedCount = stageQuestions.filter(q => q.question !== q.originalQuestion || q.answer !== q.originalAnswer).length;
+            return `
+              <button onclick='setEditorStage(${JSON.stringify(stage)})'
+                class="shrink-0 px-3 py-2 rounded-2xl border-2 text-[11px] font-black shadow-sm ${isActive ? 'bg-emerald-400 text-emerald-950 border-emerald-500' : 'bg-white text-slate-600 border-emerald-100'}">
+                ${stage}
+                ${stageChangedCount ? `<span class="ml-1 bg-white/80 text-emerald-800 px-1.5 py-0.5 rounded-full text-[9px]">${stageChangedCount}</span>` : ''}
+              </button>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      const questionCardsHtml = filteredQuestions.map(q => {
+        const isOpen = state.editorDetailOpened[q.id] || false;
+        const isChanged = q.question !== q.originalQuestion || q.answer !== q.originalAnswer;
+        return `
+          <article class="bg-white border-2 ${isChanged ? 'border-emerald-200' : 'border-sky-100'} rounded-3xl shadow-sm overflow-hidden">
+            <button onclick="toggleEditorQuestion(${q.id})" class="w-full text-left p-3 flex gap-3 items-start">
+              <span class="shrink-0 bg-sky-50 text-sky-700 border border-sky-100 rounded-xl px-2 py-1 text-[10px] font-black font-mono">Q${q.id}</span>
+              <div class="min-w-0 flex-1 space-y-2">
+                <div class="flex items-center gap-2">
+                  ${isChanged ? '<span class="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded-full">変更済</span>' : '<span class="bg-slate-100 text-slate-500 text-[9px] font-black px-2 py-0.5 rounded-full">標準</span>'}
+                  <span class="ml-auto text-[10px] font-black text-slate-400">${isOpen ? '閉じる' : '編集'}</span>
+                </div>
+                <p class="text-[12px] font-black text-slate-800 leading-relaxed whitespace-pre-wrap">${escapeHtml(q.question)}</p>
+                <div class="bg-[#EBF5FB] border border-sky-100 rounded-2xl p-2">
+                  <p class="text-[11px] font-black text-sky-950 leading-relaxed whitespace-pre-wrap font-mono">${escapeHtml(q.answer)}</p>
+                </div>
+              </div>
+            </button>
+
+            <div class="${isOpen ? 'block' : 'hidden'} border-t border-sky-100 bg-sky-50/45 p-3 space-y-3 animate-fade-in">
+              <div>
+                <label for="editor-input-${q.id}" class="text-[10px] font-black text-sky-700 block mb-1">問題文</label>
+                <textarea id="editor-input-${q.id}" rows="5" class="w-full min-h-[8rem] bg-white border-2 border-sky-100 rounded-2xl p-3 font-bold focus:border-sky-400 outline-none leading-relaxed text-[16px]">${escapeHtml(q.question)}</textarea>
+              </div>
+
+              <div>
+                <label for="editor-answer-${q.id}" class="text-[10px] font-black text-emerald-700 block mb-1">答え</label>
+                <textarea id="editor-answer-${q.id}" rows="5" class="w-full min-h-[8rem] bg-white border-2 border-emerald-100 rounded-2xl p-3 font-bold focus:border-emerald-400 outline-none leading-relaxed text-[16px] font-mono">${escapeHtml(q.answer)}</textarea>
+              </div>
+
+              <div class="grid grid-cols-[1fr_auto] gap-2">
+                <button onclick="updateQuestionText(${q.id}, 'editor-input-${q.id}', 'editor-answer-${q.id}')" class="btn-bubbly bg-[#5EF2D3] text-emerald-950 font-black rounded-2xl py-3 border-b-4 border-emerald-400 shadow-sm text-[12px]">
+                  保存する
+                </button>
+                <button onclick="restoreQuestionDefault(${q.id})" class="btn-bubbly bg-white text-rose-600 border border-rose-200 font-black rounded-2xl px-3 py-3 shadow-sm text-[11px]">
+                  元に戻す
+                </button>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      return `
+        <div class="sticky top-0 z-20 -mx-4 px-4 pt-3 pb-3 bg-[#EBF5FB]/95 backdrop-blur border-b border-sky-100 mb-4">
+          <div class="flex items-center justify-between gap-3">
+            <button onclick="goBackToSelect()" class="bg-white hover:bg-slate-50 text-slate-600 font-black py-2 px-3 rounded-2xl text-[11px] border-2 border-sky-100 shadow-sm">
+              ◀ トップ
+            </button>
+            <div class="text-right min-w-0">
+              <h2 class="text-base font-black text-slate-800 leading-tight">問題文・答えを編集</h2>
+              <p class="text-[10px] font-bold text-emerald-700">${state.editorActiveStage} / 変更済 ${changedCount}問</p>
+            </div>
+          </div>
+        </div>
+
+        ${stageTabsHtml}
+
+        <div class="bg-white rounded-3xl border-2 border-emerald-100 p-3 shadow-sm mb-4">
+          <p class="text-[11px] font-bold text-slate-600 leading-relaxed">
+            問題カードを押すと編集欄が開きます。保存した内容はプレイ画面、一覧、セーブコード同期に反映されます。
+          </p>
+        </div>
+
+        <div class="space-y-3 mb-8">
+          ${questionCardsHtml}
+        </div>
       `;
     }
 
