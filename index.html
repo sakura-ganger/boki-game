@@ -321,7 +321,9 @@
           wrongCount: savedState.wrongCount || 0,
           // 変更されたカスタム問題文の読み込み
           question: savedState.customQuestion || q.question,
-          originalQuestion: q.question // リセット用にオリジナルを保持
+          answer: savedState.customAnswer || q.answer,
+          originalQuestion: q.question, // リセット用にオリジナルを保持
+          originalAnswer: q.answer
         };
       });
     }
@@ -333,7 +335,8 @@
           isFavorite: q.isFavorite,
           isCleared: q.isCleared,
           wrongCount: q.wrongCount,
-          customQuestion: q.question !== q.originalQuestion ? q.question : null
+          customQuestion: q.question !== q.originalQuestion ? q.question : null,
+          customAnswer: q.answer !== q.originalAnswer ? q.answer : null
         };
       });
       setStorageItem(STORAGE_KEY, JSON.stringify(progress));
@@ -960,7 +963,7 @@ ${fallback}`;
     }
 
     // --- 6. 問題のカスタム上書き保存・元に戻すロジック ---
-    function updateQuestionText(qId, inputId) {
+    function updateQuestionText(qId, inputId, answerInputId = null) {
       initAudio();
       sounds.tap();
       const inputEl = document.getElementById(inputId);
@@ -971,12 +974,22 @@ ${fallback}`;
         showModal("警告", "問題文を空にすることはできません。");
         return;
       }
+
+      const answerInputEl = answerInputId ? document.getElementById(answerInputId) : null;
+      const newAnswer = answerInputEl ? answerInputEl.value.trim() : null;
+      if (answerInputEl && !newAnswer) {
+        showModal("警告", "答えを空にすることはできません。");
+        return;
+      }
       
       const q = state.questions.find(item => item.id === qId);
       if (q) {
         q.question = newText;
+        if (answerInputEl) {
+          q.answer = newAnswer;
+        }
         saveProgress();
-        showModal("変更完了", `Q${qId} の問題文を更新しました。プレイ画面や一覧画面に即座に反映されます。🌸`);
+        showModal("変更完了", `Q${qId} の問題文と答えを更新しました。プレイ画面や一覧画面に即座に反映されます。🌸`);
         render();
       }
     }
@@ -987,12 +1000,17 @@ ${fallback}`;
       const q = state.questions.find(item => item.id === qId);
       if (q) {
         q.question = q.originalQuestion;
+        q.answer = q.originalAnswer;
         saveProgress();
         
         // 【ご要望対応】変更後入力テキストエリアの値も即座にデフォルト値に完全復元！
         const inputEl = document.getElementById(`editor-input-${qId}`);
         if (inputEl) {
           inputEl.value = q.originalQuestion;
+        }
+        const answerInputEl = document.getElementById(`editor-answer-${qId}`);
+        if (answerInputEl) {
+          answerInputEl.value = q.originalAnswer;
         }
         
         showModal("復元完了", `Q${qId} の問題文をデフォルトに戻しました。`);
@@ -1661,8 +1679,18 @@ ${state.geminiLastStatus}
                     <textarea id="editor-input-${q.id}" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold focus:border-sky-400 outline-none leading-relaxed text-[11px]">${escapeHtml(q.question)}</textarea>
                   </div>
 
-                  <button onclick="updateQuestionText(${q.id}, 'editor-input-${q.id}')" class="btn-bubbly w-full py-1.5 bg-[#5EF2D3] text-emerald-950 font-black rounded-xl text-center shadow-sm text-[11px]">
-                    問題文を保存する 💾
+                  <div>
+                    <span class="text-[10px] font-black text-slate-400 block mb-1">【変更前の答え（デフォルト）】</span>
+                    <p class="text-[11px] text-slate-600 leading-relaxed bg-slate-50 p-2 rounded-xl border border-slate-100 font-bold whitespace-pre-wrap font-mono">${escapeHtml(q.originalAnswer)}</p>
+                  </div>
+
+                  <div>
+                    <span class="text-[10px] font-black text-emerald-600 block mb-1">【変更後の答え（ここに正しい答えを編集してね）】</span>
+                    <textarea id="editor-answer-${q.id}" rows="2" class="w-full bg-emerald-50/50 border border-emerald-200 rounded-xl p-2 font-bold focus:border-emerald-400 outline-none leading-relaxed text-[11px] font-mono">${escapeHtml(q.answer)}</textarea>
+                  </div>
+
+                  <button onclick="updateQuestionText(${q.id}, 'editor-input-${q.id}', 'editor-answer-${q.id}')" class="btn-bubbly w-full py-1.5 bg-[#5EF2D3] text-emerald-950 font-black rounded-xl text-center shadow-sm text-[11px]">
+                    問題文と答えを保存する 💾
                   </button>
                 </div>
               `).join('')}
@@ -1979,6 +2007,7 @@ ${state.geminiLastStatus}
         if (item.isCleared) compactItem.c = 1;
         if (Number(item.wrongCount) > 0) compactItem.w = Number(item.wrongCount);
         if (item.customQuestion) compactItem.q = item.customQuestion;
+        if (item.customAnswer) compactItem.a = item.customAnswer;
 
         if (Object.keys(compactItem).length > 0) {
           compactProgress[id] = compactItem;
@@ -2035,7 +2064,8 @@ ${state.geminiLastStatus}
             isFavorite: Boolean(item.f),
             isCleared: Boolean(item.c),
             wrongCount: Number(item.w) || 0,
-            customQuestion: item.q || null
+            customQuestion: item.q || null,
+            customAnswer: item.a || null
           };
         });
         return {
@@ -2067,7 +2097,8 @@ ${state.geminiLastStatus}
           isFavorite: Boolean(localItem.isFavorite || incomingItem.isFavorite),
           isCleared: Boolean(localItem.isCleared || incomingItem.isCleared),
           wrongCount: Math.max(Number(localItem.wrongCount) || 0, Number(incomingItem.wrongCount) || 0),
-          customQuestion: incomingItem.customQuestion || localItem.customQuestion || null
+          customQuestion: incomingItem.customQuestion || localItem.customQuestion || null,
+          customAnswer: incomingItem.customAnswer || localItem.customAnswer || null
         };
       });
       return merged;
